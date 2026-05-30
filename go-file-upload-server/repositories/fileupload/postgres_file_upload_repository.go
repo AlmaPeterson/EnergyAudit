@@ -378,7 +378,7 @@ func (p PostgresFileUploadRepository) DeleteFileUpload(id string) error {
 	}
 
 	// Convert string ID to int64 for database query
-	parsedID, err := strconv.ParseInt(id, 10, 64)
+	parsedID, err = strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid ID format")
 	}

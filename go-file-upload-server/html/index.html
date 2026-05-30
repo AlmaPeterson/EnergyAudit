@@ -1,91 +1,153 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>File Upload</title>
-    <link rel="stylesheet" href="index.css" />
-    <style>
-      body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; padding: 2rem; }
-      .card { max-width: 800px; margin: 0 auto; border: 1px solid #e6e6e6; padding: 1rem 1.25rem; border-radius: 8px; }
-      h1 { margin: 0 0 1rem 0; font-size: 1.25rem; }
-      #uploads { list-style: none; padding: 0; margin: 1rem 0 0 0; }
-      #uploads li { display:flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #f0f0f0; }
-      .controls { display:flex; gap:0.5rem; align-items:center; }
-      button { padding: 0.4rem 0.6rem; border-radius:4px; border:1px solid #ccc; background:#fff; cursor:pointer }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h1>Simple File Upload</h1>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure File Upload Manager</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div class="grid-bg"></div>
+    
+    <!-- Auth Section (shown when not logged in) -->
+    <div id="authSection" class="auth-container">
+        <div class="auth-card">
+            <h1>File Upload Manager</h1>
+            
+            <!-- Login Form -->
+            <div id="loginForm" class="auth-form active">
+                <h2>Login</h2>
+                <div class="form-group">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter your password" required>
+                </div>
+                <button id="loginBtn" class="btn btn-primary">Login</button>
+                <p class="form-toggle">Don't have an account? <a href="#" id="showSignup">Sign up</a></p>
+                <div id="loginError" class="error-message"></div>
+            </div>
 
-      <div class="controls">
-        <input id="fileInput" type="file" />
-        <button id="uploadBtn">Upload</button>
-        <button id="refreshBtn">Refresh</button>
-      </div>
-
-      <ul id="uploads" aria-live="polite"></ul>
+            <!-- Signup Form -->
+            <div id="signupForm" class="auth-form">
+                <h2>Create Account</h2>
+                <div class="form-group">
+                    <label for="signupFirstName">First Name</label>
+                    <input type="text" id="signupFirstName" placeholder="John" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupLastName">Last Name</label>
+                    <input type="text" id="signupLastName" placeholder="Doe" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupEmail">Email</label>
+                    <input type="email" id="signupEmail" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupPassword">Password</label>
+                    <input type="password" id="signupPassword" placeholder="Create a strong password" required>
+                </div>
+                <button id="signupBtn" class="btn btn-primary">Sign Up</button>
+                <p class="form-toggle">Already have an account? <a href="#" id="showLogin">Login</a></p>
+                <div id="signupError" class="error-message"></div>
+            </div>
+        </div>
     </div>
 
-    <script>
-      async function loadUploads() {
-        const res = await fetch('/api/uploads');
-        if (!res.ok) { console.error('failed to load uploads'); return }
-        const uploads = await res.json();
-        const list = document.getElementById('uploads');
-        list.innerHTML = '';
-        uploads.forEach(u => {
-          const li = document.createElement('li');
-          const left = document.createElement('div');
-          left.textContent = `${u.fileName}.${u.fileExtension} — ${new Date(u.uploadedAt).toLocaleString()}`;
+    <!-- Main App Section (shown when logged in) -->
+    <div id="appSection" class="app-container hidden">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1>File Upload Manager</h1>
+                <div class="header-user">
+                    <span id="userDisplay"></span>
+                    <button id="logoutBtn" class="btn btn-small">Logout</button>
+                </div>
+            </div>
+        </header>
 
-          const right = document.createElement('div');
-          right.style.display = 'flex';
-          right.style.gap = '0.5rem';
+        <!-- Main Content -->
+        <main class="app-main">
+            <!-- Upload Section -->
+            <section class="card">
+                <h2>Upload File</h2>
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="fileInput" hidden>
+                    <div class="upload-placeholder">
+                        <p>Click to select a file or drag and drop</p>
+                        <small>Max file size: 100MB</small>
+                    </div>
+                </div>
+                <div id="uploadProgress" class="progress-bar hidden">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <div id="uploadError" class="error-message"></div>
+            </section>
 
-          const dl = document.createElement('a');
-          dl.href = `/uploads/${u.id}`;
-          dl.textContent = 'Download';
-          dl.style.textDecoration = 'none';
+            <!-- Files Section -->
+            <section class="card">
+                <div class="section-header">
+                    <h2>My Files</h2>
+                    <button id="refreshFilesBtn" class="btn btn-small">Refresh</button>
+                </div>
+                
+                <div id="filesLoading" class="loading">Loading files...</div>
+                
+                <div id="filesEmpty" class="empty-state hidden">
+                    <p>No files yet. Upload one to get started!</p>
+                </div>
 
-          const del = document.createElement('button');
-          del.textContent = 'Delete';
-          del.onclick = async () => {
-            if (!confirm('Delete this file?')) return;
-            const r = await fetch(`/api/uploads/${u.id}`, { method: 'DELETE' });
-            if (r.ok) loadUploads(); else alert('Delete failed');
-          };
+                <div id="filesList" class="files-list hidden">
+                    <!-- Files will be populated here -->
+                </div>
+            </section>
 
-          right.appendChild(dl);
-          right.appendChild(del);
+            <!-- Sharing Section -->
+            <section class="card">
+                <h2>File Sharing</h2>
+                
+                <div class="share-create">
+                    <h3>Share a File</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="shareFileSelect">Select File</label>
+                            <select id="shareFileSelect">
+                                <option value="">Choose a file...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="shareGranteeEmail">Grantee Email</label>
+                            <input type="email" id="shareGranteeEmail" placeholder="recipient@email.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="shareAccessLevel">Access Level</label>
+                            <select id="shareAccessLevel">
+                                <option value="view">View Only</option>
+                                <option value="download">Download</option>
+                            </select>
+                        </div>
+                        <button id="createShareBtn" class="btn btn-primary">Share</button>
+                    </div>
+                    <div id="shareError" class="error-message"></div>
+                </div>
 
-          li.appendChild(left);
-          li.appendChild(right);
-          list.appendChild(li);
-        });
-      }
+                <div class="shares-list">
+                    <h3>My Shares</h3>
+                    <div id="sharesLoading" class="loading">Loading shares...</div>
+                    <div id="sharesEmpty" class="empty-state hidden">
+                        <p>No shares yet.</p>
+                    </div>
+                    <div id="sharesList" class="shares-table hidden">
+                        <!-- Shares will be populated here -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
 
-      document.getElementById('uploadBtn').addEventListener('click', async () => {
-        const input = document.getElementById('fileInput');
-        if (!input.files || input.files.length === 0) { alert('Choose a file first'); return }
-        const file = input.files[0];
-        const form = new FormData();
-        form.append('file', file);
-        const res = await fetch('/api/uploads', { method: 'POST', body: form });
-        if (res.status === 201) {
-          input.value = '';
-          loadUploads();
-        } else {
-          const txt = await res.text();
-          alert('Upload failed: ' + txt);
-        }
-      });
-
-      document.getElementById('refreshBtn').addEventListener('click', loadUploads);
-
-      // initial load
-      loadUploads().catch(e => console.error(e));
-    </script>
-  </body>
+    <script src="app.js"></script>
+</body>
 </html>

@@ -3,7 +3,6 @@ package fileupload
 import (
 	"database/sql"
 	"fmt"
-	"time"
 
 	"go-file-upload-server/domain"
 )
