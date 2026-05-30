@@ -1,0 +1,6 @@
+git rm --cached *.json
+git rm --cached *.log
+git rm --cached *.tmp
+git rm --cached .vscode/
+git rm --cached .idea/
+git rm --cached .env

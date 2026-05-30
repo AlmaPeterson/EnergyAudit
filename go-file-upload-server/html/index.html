@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>File Upload</title>
+    <link rel="stylesheet" href="index.css" />
+    <style>
+      body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; padding: 2rem; }
+      .card { max-width: 800px; margin: 0 auto; border: 1px solid #e6e6e6; padding: 1rem 1.25rem; border-radius: 8px; }
+      h1 { margin: 0 0 1rem 0; font-size: 1.25rem; }
+      #uploads { list-style: none; padding: 0; margin: 1rem 0 0 0; }
+      #uploads li { display:flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #f0f0f0; }
+      .controls { display:flex; gap:0.5rem; align-items:center; }
+      button { padding: 0.4rem 0.6rem; border-radius:4px; border:1px solid #ccc; background:#fff; cursor:pointer }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Simple File Upload</h1>
+
+      <div class="controls">
+        <input id="fileInput" type="file" />
+        <button id="uploadBtn">Upload</button>
+        <button id="refreshBtn">Refresh</button>
+      </div>
+
+      <ul id="uploads" aria-live="polite"></ul>
+    </div>
+
+    <script>
+      async function loadUploads() {
+        const res = await fetch('/api/uploads');
+        if (!res.ok) { console.error('failed to load uploads'); return }
+        const uploads = await res.json();
+        const list = document.getElementById('uploads');
+        list.innerHTML = '';
+        uploads.forEach(u => {
+          const li = document.createElement('li');
+          const left = document.createElement('div');
+          left.textContent = `${u.fileName}.${u.fileExtension} — ${new Date(u.uploadedAt).toLocaleString()}`;
+
+          const right = document.createElement('div');
+          right.style.display = 'flex';
+          right.style.gap = '0.5rem';
+
+          const dl = document.createElement('a');
+          dl.href = `/uploads/${u.id}`;
+          dl.textContent = 'Download';
+          dl.style.textDecoration = 'none';
+
+          const del = document.createElement('button');
+          del.textContent = 'Delete';
+          del.onclick = async () => {
+            if (!confirm('Delete this file?')) return;
+            const r = await fetch(`/api/uploads/${u.id}`, { method: 'DELETE' });
+            if (r.ok) loadUploads(); else alert('Delete failed');
+          };
+
+          right.appendChild(dl);
+          right.appendChild(del);
+
+          li.appendChild(left);
+          li.appendChild(right);
+          list.appendChild(li);
+        });
+      }
+
+      document.getElementById('uploadBtn').addEventListener('click', async () => {
+        const input = document.getElementById('fileInput');
+        if (!input.files || input.files.length === 0) { alert('Choose a file first'); return }
+        const file = input.files[0];
+        const form = new FormData();
+        form.append('file', file);
+        const res = await fetch('/api/uploads', { method: 'POST', body: form });
+        if (res.status === 201) {
+          input.value = '';
+          loadUploads();
+        } else {
+          const txt = await res.text();
+          alert('Upload failed: ' + txt);
+        }
+      });
+
+      document.getElementById('refreshBtn').addEventListener('click', loadUploads);
+
+      // initial load
+      loadUploads().catch(e => console.error(e));
+    </script>
+  </body>
+</html>

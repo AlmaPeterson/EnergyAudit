@@ -1,0 +1,168 @@
+package controllers
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"path/filepath"
+	"strings"
+
+	"go-file-upload-server/domain"
+	"go-file-upload-server/services/httpserver"
+)
+
+type FileUploadsController struct {
+	repository   domain.FileUploadRepository
+	errorHandler *httpserver.HttpErrorHandler
+}
+
+func NewFileUploadsController(repository domain.FileUploadRepository, errorHandler *httpserver.HttpErrorHandler) FileUploadsController {
+	return FileUploadsController{
+		repository:   repository,
+		errorHandler: errorHandler,
+	}
+}
+
+// BeforeAction implements httpserver.Controller.
+func (f FileUploadsController) BeforeAction(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		handler(w, r)
+	}
+}
+
+// Routes implements httpserver.Controller.
+func (f FileUploadsController) Routes() []httpserver.Route {
+	return []httpserver.Route{
+		{
+			Pattern: "/api/uploads",
+			Method:  http.MethodGet,
+			Handler: f.HandleListUploads,
+		},
+		{
+			Pattern: "/api/uploads",
+			Method:  http.MethodPost,
+			Handler: f.HandleUploadFile,
+		},
+		{
+			Pattern: "/api/uploads/",
+			Method:  http.MethodDelete,
+			Handler: f.HandleDeleteUpload,
+		},
+		{
+			Pattern: "/uploads/",
+			Method:  http.MethodGet,
+			Handler: f.HandleDownloadUpload,
+		},
+	}
+}
+
+func (f FileUploadsController) HandleListUploads(w http.ResponseWriter, r *http.Request) {
+	uploads, err := f.repository.ListFileUploads()
+	if err != nil {
+		f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, uploads)
+}
+
+func (f FileUploadsController) HandleUploadFile(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		f.errorHandler.HandleError(http.StatusBadRequest, w, err)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		f.errorHandler.HandleError(http.StatusBadRequest, w, err)
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
+		return
+	}
+
+	fileName, fileExtension := splitFileName(header.Filename)
+	if fileExtension == "" {
+		f.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("file extension is required"))
+		return
+	}
+
+	fileUpload, err := domain.NewFileUpload(fileName, fileExtension)
+	if err != nil {
+		f.errorHandler.HandleError(http.StatusBadRequest, w, err)
+		return
+	}
+
+	saved, err := f.repository.UploadFile(*fileUpload, data)
+	if err != nil {
+		f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, saved)
+}
+
+func (f FileUploadsController) HandleDeleteUpload(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/uploads/")
+	id = strings.TrimSuffix(id, "/")
+	if id == "" {
+		f.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("upload ID is required"))
+		return
+	}
+
+	if err := f.repository.DeleteFileUpload(id); err != nil {
+		f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (f FileUploadsController) HandleDownloadUpload(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/uploads/")
+	id = strings.TrimSuffix(id, "/")
+	if id == "" {
+		f.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("upload ID is required"))
+		return
+	}
+
+	upload, err := f.repository.GetFileUploadByID(id)
+	if err != nil {
+		f.errorHandler.HandleError(http.StatusNotFound, w, err)
+		return
+	}
+
+	data, err := f.repository.GetFileUploadDataByID(id)
+	if err != nil {
+		f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
+		return
+	}
+
+	fileName := fmt.Sprintf("%s.%s", upload.FileName, upload.FileExtension)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func splitFileName(name string) (string, string) {
+	extension := strings.TrimPrefix(filepath.Ext(name), ".")
+	baseName := strings.TrimSuffix(name, filepath.Ext(name))
+	if baseName == "" {
+		baseName = name
+	}
+	return baseName, extension
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+var _ httpserver.Controller = FileUploadsController{}
