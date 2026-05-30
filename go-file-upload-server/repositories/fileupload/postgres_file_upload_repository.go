@@ -143,16 +143,63 @@ func (p PostgresFileUploadRepository) ensureSchema() error {
 		return err
 	}
 
-	query := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+	// Create users table
+	usersQuery := `CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		first_name TEXT NOT NULL,
+		last_name TEXT NOT NULL,
+		email TEXT NOT NULL UNIQUE,
+		password_hash TEXT NOT NULL,
+		created_at TIMESTAMPTZ NOT NULL,
+		updated_at TIMESTAMPTZ NOT NULL
+	)`
+	if _, err := p.db.Exec(usersQuery); err != nil {
+		return err
+	}
+
+	// Create folders table
+	foldersQuery := `CREATE TABLE IF NOT EXISTS folders (
+		id TEXT PRIMARY KEY,
+		owner_id TEXT NOT NULL,
+		parent_id TEXT NULL,
+		name TEXT NOT NULL,
+		created_at TIMESTAMPTZ NOT NULL,
+		updated_at TIMESTAMPTZ NOT NULL
+	)`
+	if _, err := p.db.Exec(foldersQuery); err != nil {
+		return err
+	}
+
+	// Create file_uploads table (existing)
+	uploadsQuery := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		id BIGSERIAL PRIMARY KEY,
-		file_name TEXT NOT NULL,
+		original_name TEXT NOT NULL,
 		file_extension TEXT NOT NULL,
+		owner_id TEXT NOT NULL,
+		folder_id TEXT NULL,
 		upload_uuid TEXT NOT NULL UNIQUE,
+		size_bytes BIGINT NOT NULL DEFAULT 0,
+		mime_type TEXT,
 		uploaded_at TIMESTAMPTZ NOT NULL
 	)`, tn)
+	if _, err := p.db.Exec(uploadsQuery); err != nil {
+		return err
+	}
 
-	_, err = p.db.Exec(query)
-	return err
+	// Create file_shares table
+	sharesQuery := `CREATE TABLE IF NOT EXISTS file_shares (
+		id BIGSERIAL PRIMARY KEY,
+		file_id BIGINT NOT NULL,
+		owner_id TEXT NOT NULL,
+		grantee_id TEXT NOT NULL,
+		access_level TEXT NOT NULL,
+		created_at TIMESTAMPTZ NOT NULL
+	)`
+	if _, err := p.db.Exec(sharesQuery); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (p PostgresFileUploadRepository) filePath(uploadUuid, extension string) string {
