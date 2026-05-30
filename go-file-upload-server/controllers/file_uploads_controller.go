@@ -64,13 +64,28 @@ func (f FileUploadsController) Routes() []httpserver.Route {
 }
 
 func (f FileUploadsController) HandleListUploads(w http.ResponseWriter, r *http.Request) {
+	// require authenticated user
+	current := httpserver.GetCurrentUser(r)
+	if current == nil {
+		f.errorHandler.HandleError(http.StatusUnauthorized, w, fmt.Errorf("authentication required"))
+		return
+	}
+
 	uploads, err := f.repository.ListFileUploads()
 	if err != nil {
 		f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, uploads)
+	// filter to owner or shared resources (sharing not yet implemented)
+	owned := []domain.FileUpload{}
+	for _, u := range uploads {
+		if u.OwnerID == current.Id {
+			owned = append(owned, u)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, owned)
 }
 
 func (f FileUploadsController) HandleUploadFile(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +149,23 @@ func (f FileUploadsController) HandleDeleteUpload(w http.ResponseWriter, r *http
 		return
 	}
 
+	current := httpserver.GetCurrentUser(r)
+	if current == nil {
+		f.errorHandler.HandleError(http.StatusUnauthorized, w, fmt.Errorf("authentication required"))
+		return
+	}
+
+	upload, err := f.repository.GetFileUploadByID(id)
+	if err != nil {
+		f.errorHandler.HandleError(http.StatusNotFound, w, err)
+		return
+	}
+
+	if upload.OwnerID != current.Id {
+		f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
+		return
+	}
+
 	if err := f.repository.DeleteFileUpload(id); err != nil {
 		f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
 		return
@@ -150,9 +182,20 @@ func (f FileUploadsController) HandleDownloadUpload(w http.ResponseWriter, r *ht
 		return
 	}
 
+	current := httpserver.GetCurrentUser(r)
+	if current == nil {
+		f.errorHandler.HandleError(http.StatusUnauthorized, w, fmt.Errorf("authentication required"))
+		return
+	}
+
 	upload, err := f.repository.GetFileUploadByID(id)
 	if err != nil {
 		f.errorHandler.HandleError(http.StatusNotFound, w, err)
+		return
+	}
+
+	if upload.OwnerID != current.Id {
+		f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
 		return
 	}
 
