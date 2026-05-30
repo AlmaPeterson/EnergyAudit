@@ -14,8 +14,6 @@ import (
 
 	"go-file-upload-server/domain"
 
-	"github.com/google/uuid"
-
 	_ "github.com/lib/pq"
 )
 
@@ -202,9 +200,12 @@ func (p PostgresFileUploadRepository) ensureSchema() error {
 	return nil
 }
 
-func (p PostgresFileUploadRepository) filePath(uploadUuid, extension string) string {
+func (p PostgresFileUploadRepository) filePathForID(id int64, extension string) string {
 	extension = strings.TrimPrefix(extension, ".")
-	return filepath.Join(p.Config.UploadPath, fmt.Sprintf("%s.%s", uploadUuid, extension))
+	if extension != "" {
+		return filepath.Join(p.Config.UploadPath, fmt.Sprintf("%d.%s", id, extension))
+	}
+	return filepath.Join(p.Config.UploadPath, fmt.Sprintf("%d", id))
 }
 
 func (p PostgresFileUploadRepository) tableName() (string, error) {
@@ -221,39 +222,44 @@ func (p PostgresFileUploadRepository) tableName() (string, error) {
 }
 
 func (p PostgresFileUploadRepository) UploadFile(fileUpload domain.FileUpload, fileData []byte) (domain.FileUpload, error) {
-	if fileUpload.FileName == "" {
-		return domain.FileUpload{}, errors.New("file name is required")
+	if fileUpload.OriginalName == "" {
+		return domain.FileUpload{}, errors.New("original name is required")
 	}
-	if fileUpload.FileExtension == "" {
+	if fileUpload.Extension == "" {
 		return domain.FileUpload{}, errors.New("file extension is required")
 	}
 	if len(fileData) == 0 {
 		return domain.FileUpload{}, errors.New("file data cannot be empty")
 	}
 
-	fileUpload.FileExtension = strings.TrimPrefix(fileUpload.FileExtension, ".")
-	// ID will be assigned by the database (BIGSERIAL)
-	if fileUpload.UploadUuid == "" {
-		fileUpload.UploadUuid = uuid.NewString()
-	}
-
-	filePath := p.filePath(fileUpload.UploadUuid, fileUpload.FileExtension)
-	if err := os.WriteFile(filePath, fileData, 0o644); err != nil {
-		return domain.FileUpload{}, err
-	}
+	fileUpload.Extension = strings.TrimPrefix(fileUpload.Extension, ".")
 
 	tn, err := p.tableName()
 	if err != nil {
-		_ = os.Remove(filePath)
 		return domain.FileUpload{}, err
 	}
 
-	// Insert and return generated id (as int64), then convert to string for domain
-	query := fmt.Sprintf(`INSERT INTO %s (file_name, file_extension, upload_uuid, uploaded_at) VALUES ($1, $2, $3, $4) RETURNING id`, tn)
+	// Insert metadata first and get numeric id
+	query := fmt.Sprintf(`INSERT INTO %s (original_name, file_extension, owner_id, folder_id, size_bytes, mime_type, uploaded_at) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, tn)
 	var newId int64
-	err = p.db.QueryRow(query, fileUpload.FileName, fileUpload.FileExtension, fileUpload.UploadUuid, fileUpload.UploadedAt).Scan(&newId)
+	var folderID interface{}
+	if fileUpload.FolderID != nil {
+		folderID = *fileUpload.FolderID
+	} else {
+		folderID = nil
+	}
+
+	err = p.db.QueryRow(query, fileUpload.OriginalName, fileUpload.Extension, fileUpload.OwnerID, folderID, fileUpload.SizeBytes, fileUpload.MimeType, fileUpload.UploadedAt).Scan(&newId)
 	if err != nil {
-		_ = os.Remove(filePath)
+		return domain.FileUpload{}, err
+	}
+
+	// Now write file using id as storage key. If write fails, remove DB row.
+	filePath := p.filePathForID(newId, fileUpload.Extension)
+	if err := os.WriteFile(filePath, fileData, 0o644); err != nil {
+		// cleanup DB row
+		delQuery := fmt.Sprintf(`DELETE FROM %s WHERE id = $1`, tn)
+		_, _ = p.db.Exec(delQuery, newId)
 		return domain.FileUpload{}, err
 	}
 
@@ -267,7 +273,6 @@ func (p PostgresFileUploadRepository) GetFileUploadByID(id string) (domain.FileU
 	if err != nil {
 		return domain.FileUpload{}, err
 	}
-
 	// Convert string ID to int64 for database query
 	parsedID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
@@ -275,13 +280,21 @@ func (p PostgresFileUploadRepository) GetFileUploadByID(id string) (domain.FileU
 	}
 
 	var dbID int64
-	query := fmt.Sprintf(`SELECT id, file_name, file_extension, upload_uuid, uploaded_at FROM %s WHERE id = $1`, tn)
+	var folderID sql.NullString
+	query := fmt.Sprintf(`SELECT id, original_name, file_extension, owner_id, folder_id, size_bytes, mime_type, uploaded_at FROM %s WHERE id = $1`, tn)
 	row := p.db.QueryRow(query, parsedID)
-	if err := row.Scan(&dbID, &fileUpload.FileName, &fileUpload.FileExtension, &fileUpload.UploadUuid, &fileUpload.UploadedAt); err != nil {
+	if err := row.Scan(&dbID, &fileUpload.OriginalName, &fileUpload.Extension, &fileUpload.OwnerID, &folderID, &fileUpload.SizeBytes, &fileUpload.MimeType, &fileUpload.UploadedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.FileUpload{}, fmt.Errorf("file upload not found")
 		}
 		return domain.FileUpload{}, err
+	}
+
+	if folderID.Valid {
+		v := folderID.String
+		fileUpload.FolderID = &v
+	} else {
+		fileUpload.FolderID = nil
 	}
 
 	// Convert int64 ID back to string for domain model
@@ -294,8 +307,12 @@ func (p PostgresFileUploadRepository) GetFileUploadDataByID(id string) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-
-	filePath := p.filePath(fileUpload.UploadUuid, fileUpload.FileExtension)
+	// storage path uses DB id
+	parsedID, err := strconv.ParseInt(fileUpload.Id, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid id")
+	}
+	filePath := p.filePathForID(parsedID, fileUpload.Extension)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
@@ -309,7 +326,7 @@ func (p PostgresFileUploadRepository) ListFileUploads() ([]domain.FileUpload, er
 	if err != nil {
 		return nil, err
 	}
-	query := fmt.Sprintf(`SELECT id, file_name, file_extension, upload_uuid, uploaded_at FROM %s ORDER BY uploaded_at DESC`, tn)
+	query := fmt.Sprintf(`SELECT id, original_name, file_extension, owner_id, folder_id, size_bytes, mime_type, uploaded_at FROM %s ORDER BY uploaded_at DESC`, tn)
 	rows, err := p.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -320,11 +337,16 @@ func (p PostgresFileUploadRepository) ListFileUploads() ([]domain.FileUpload, er
 	for rows.Next() {
 		var upload domain.FileUpload
 		var dbID int64
-		if err := rows.Scan(&dbID, &upload.FileName, &upload.FileExtension, &upload.UploadUuid, &upload.UploadedAt); err != nil {
+		var folderID sql.NullString
+		if err := rows.Scan(&dbID, &upload.OriginalName, &upload.Extension, &upload.OwnerID, &folderID, &upload.SizeBytes, &upload.MimeType, &upload.UploadedAt); err != nil {
 			return nil, err
 		}
 		// Convert int64 ID back to string for domain model
 		upload.Id = fmt.Sprintf("%d", dbID)
+		if folderID.Valid {
+			v := folderID.String
+			upload.FolderID = &v
+		}
 		uploads = append(uploads, upload)
 	}
 
@@ -340,8 +362,12 @@ func (p PostgresFileUploadRepository) DeleteFileUpload(id string) error {
 	if err != nil {
 		return err
 	}
-
-	filePath := p.filePath(fileUpload.UploadUuid, fileUpload.FileExtension)
+	// storage path uses DB id
+	parsedID, err := strconv.ParseInt(fileUpload.Id, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid id")
+	}
+	filePath := p.filePathForID(parsedID, fileUpload.Extension)
 	if err := os.Remove(filePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

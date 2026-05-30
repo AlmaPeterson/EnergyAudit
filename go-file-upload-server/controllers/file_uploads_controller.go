@@ -13,21 +13,27 @@ import (
 )
 
 type FileUploadsController struct {
-	repository   domain.FileUploadRepository
-	errorHandler *httpserver.HttpErrorHandler
+	repository     domain.FileUploadRepository
+	errorHandler   *httpserver.HttpErrorHandler
+	authMiddleware func(http.HandlerFunc) http.HandlerFunc
 }
 
-func NewFileUploadsController(repository domain.FileUploadRepository, errorHandler *httpserver.HttpErrorHandler) FileUploadsController {
+func NewFileUploadsController(repository domain.FileUploadRepository, errorHandler *httpserver.HttpErrorHandler, authMiddleware func(http.HandlerFunc) http.HandlerFunc) FileUploadsController {
 	return FileUploadsController{
-		repository:   repository,
-		errorHandler: errorHandler,
+		repository:     repository,
+		errorHandler:   errorHandler,
+		authMiddleware: authMiddleware,
 	}
 }
 
 // BeforeAction implements httpserver.Controller.
 func (f FileUploadsController) BeforeAction(handler http.HandlerFunc) http.HandlerFunc {
+	h := handler
+	if f.authMiddleware != nil {
+		h = f.authMiddleware(h)
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		handler(w, r)
+		h(w, r)
 	}
 }
 
@@ -92,7 +98,20 @@ func (f FileUploadsController) HandleUploadFile(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	fileUpload, err := domain.NewFileUpload(fileName, fileExtension)
+	// require authenticated user
+	current := httpserver.GetCurrentUser(r)
+	if current == nil {
+		f.errorHandler.HandleError(http.StatusUnauthorized, w, fmt.Errorf("authentication required"))
+		return
+	}
+
+	var folderID *string
+	// optionally read folder id from form field "folderId"
+	if v := r.FormValue("folderId"); v != "" {
+		folderID = &v
+	}
+
+	fileUpload, err := domain.NewFileUpload(fileName, fileExtension, current.Id, folderID, int64(len(data)), header.Header.Get("Content-Type"))
 	if err != nil {
 		f.errorHandler.HandleError(http.StatusBadRequest, w, err)
 		return
@@ -143,7 +162,7 @@ func (f FileUploadsController) HandleDownloadUpload(w http.ResponseWriter, r *ht
 		return
 	}
 
-	fileName := fmt.Sprintf("%s.%s", upload.FileName, upload.FileExtension)
+	fileName := fmt.Sprintf("%s.%s", upload.OriginalName, upload.Extension)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)

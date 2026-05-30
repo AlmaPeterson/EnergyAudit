@@ -2,9 +2,11 @@ package main
 
 import (
 	"flag"
+	"os"
 	"go-file-upload-server/controllers"
 	"go-file-upload-server/logging"
 	"go-file-upload-server/repositories/fileupload"
+	userrepo "go-file-upload-server/repositories/user"
 	"go-file-upload-server/routes"
 	"go-file-upload-server/service"
 	"go-file-upload-server/services/httpserver"
@@ -37,6 +39,11 @@ func main() {
 		panic(err)
 	}
 
+	userRepo, err := userrepo.NewPostgresUserRepository(fileUploadConfig, fileUploadSecrets)
+	if err != nil {
+		panic(err)
+	}
+
 	logger := logging.NewLogger()
 	logger.ServiceName = "Main"
 	errorHandler, err := httpserver.NewHttpErrorHandler(&logger)
@@ -49,7 +56,15 @@ func main() {
 		panic(err)
 	}
 
-	fileUploadsController := controllers.NewFileUploadsController(fileUploadRepo, &errorHandler)
+	// auth middleware using JWT secret from env (set JWT_SECRET)
+	jwtSecret := []byte(os.Getenv("JWT_SECRET"))
+	authMw := httpserver.AuthMiddleware(&userRepo, jwtSecret)
+
+	// register auth controller
+	authController := controllers.NewAuthController(userRepo, &errorHandler)
+	controllerList = append(controllerList, authController)
+
+	fileUploadsController := controllers.NewFileUploadsController(fileUploadRepo, &errorHandler, authMw)
 	controllerList = append(controllerList, fileUploadsController)
 
 	routes, err := routes.Routes(controllerList, applicationController)
