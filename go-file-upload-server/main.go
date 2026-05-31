@@ -67,6 +67,9 @@ func main() {
 	fileUploadsController := controllers.NewFileUploadsController(fileUploadRepo, &errorHandler, authMw)
 	controllerList = append(controllerList, fileUploadsController)
 
+	sharesController := controllers.NewSharesController(fileUploadRepo, &userRepo, &errorHandler, authMw)
+	controllerList = append(controllerList, sharesController)
+
 	routes, err := routes.Routes(controllerList, applicationController)
 	if err != nil {
 		panic(err)

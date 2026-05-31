@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"go-file-upload-server/domain"
 
 	_ "github.com/lib/pq"
@@ -132,6 +133,11 @@ func NewPostgresFileUploadRepository(config PostgresFileUploadRepositoryConfig, 
 		return PostgresFileUploadRepository{}, err
 	}
 
+	// ensure legacy columns exist in case this DB was created from an older migration
+	if err := repo.ensureColumns(); err != nil {
+		return PostgresFileUploadRepository{}, err
+	}
+
 	return repo, nil
 }
 
@@ -200,6 +206,56 @@ func (p PostgresFileUploadRepository) ensureSchema() error {
 	return nil
 }
 
+// ensureColumns makes sure expected columns exist in legacy tables (safe to run repeatedly).
+func (p PostgresFileUploadRepository) ensureColumns() error {
+	tn, err := p.tableName()
+	if err != nil {
+		return err
+	}
+
+	// Add commonly-missing columns if they don't exist. Use IF NOT EXISTS where possible.
+	// Note: Postgres supports ADD COLUMN IF NOT EXISTS.
+	stmts := []string{
+		// original_name and file_extension may be missing in older schemas
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS original_name TEXT", tn),
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS file_name TEXT", tn),
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS file_extension TEXT", tn),
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS owner_id TEXT", tn),
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS folder_id TEXT", tn),
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS upload_uuid TEXT", tn),
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS size_bytes BIGINT DEFAULT 0", tn),
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS mime_type TEXT", tn),
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ", tn),
+	}
+
+	for _, s := range stmts {
+		if _, err := p.db.Exec(s); err != nil {
+			return err
+		}
+	}
+
+	// Ensure file_shares columns exist as well
+	sharesStmts := []string{
+		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS file_id BIGINT",
+		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS owner_id TEXT",
+		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS grantee_id TEXT",
+		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS access_level TEXT",
+		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
+	}
+	for _, s := range sharesStmts {
+		if _, err := p.db.Exec(s); err != nil {
+			return err
+		}
+	}
+
+	// Backfill legacy column `file_name` from `original_name` if present
+	if _, err := p.db.Exec(fmt.Sprintf("UPDATE %s SET file_name = original_name WHERE file_name IS NULL AND original_name IS NOT NULL", tn)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (p PostgresFileUploadRepository) filePathForID(id int64, extension string) string {
 	extension = strings.TrimPrefix(extension, ".")
 	if extension != "" {
@@ -239,8 +295,13 @@ func (p PostgresFileUploadRepository) UploadFile(fileUpload domain.FileUpload, f
 		return domain.FileUpload{}, err
 	}
 
-	// Insert metadata first and get numeric id
-	query := fmt.Sprintf(`INSERT INTO %s (original_name, file_extension, owner_id, folder_id, size_bytes, mime_type, uploaded_at) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, tn)
+	// Generate UUID for upload_uuid column
+	uploadUUID := uuid.New().String()
+
+	// Insert metadata first and get numeric id.
+	// Populate both `original_name` and `file_name` to be compatible with databases
+	// that may have one or the other as the canonical column.
+	query := fmt.Sprintf(`INSERT INTO %s (original_name, file_name, file_extension, owner_id, folder_id, upload_uuid, size_bytes, mime_type, uploaded_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, tn)
 	var newId int64
 	var folderID interface{}
 	if fileUpload.FolderID != nil {
@@ -249,7 +310,7 @@ func (p PostgresFileUploadRepository) UploadFile(fileUpload domain.FileUpload, f
 		folderID = nil
 	}
 
-	err = p.db.QueryRow(query, fileUpload.OriginalName, fileUpload.Extension, fileUpload.OwnerID, folderID, fileUpload.SizeBytes, fileUpload.MimeType, fileUpload.UploadedAt).Scan(&newId)
+	err = p.db.QueryRow(query, fileUpload.OriginalName, fileUpload.OriginalName, fileUpload.Extension, fileUpload.OwnerID, folderID, uploadUUID, fileUpload.SizeBytes, fileUpload.MimeType, fileUpload.UploadedAt).Scan(&newId)
 	if err != nil {
 		return domain.FileUpload{}, err
 	}
@@ -281,7 +342,8 @@ func (p PostgresFileUploadRepository) GetFileUploadByID(id string) (domain.FileU
 
 	var dbID int64
 	var folderID sql.NullString
-	query := fmt.Sprintf(`SELECT id, original_name, file_extension, owner_id, folder_id, size_bytes, mime_type, uploaded_at FROM %s WHERE id = $1`, tn)
+	// Read original name using COALESCE to support legacy schemas that may use `file_name`.
+	query := fmt.Sprintf(`SELECT id, COALESCE(original_name, file_name) AS original_name, file_extension, owner_id, folder_id, size_bytes, mime_type, uploaded_at FROM %s WHERE id = $1`, tn)
 	row := p.db.QueryRow(query, parsedID)
 	if err := row.Scan(&dbID, &fileUpload.OriginalName, &fileUpload.Extension, &fileUpload.OwnerID, &folderID, &fileUpload.SizeBytes, &fileUpload.MimeType, &fileUpload.UploadedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -326,7 +388,8 @@ func (p PostgresFileUploadRepository) ListFileUploads() ([]domain.FileUpload, er
 	if err != nil {
 		return nil, err
 	}
-	query := fmt.Sprintf(`SELECT id, original_name, file_extension, owner_id, folder_id, size_bytes, mime_type, uploaded_at FROM %s ORDER BY uploaded_at DESC`, tn)
+	// Use COALESCE to read from either `original_name` or legacy `file_name`.
+	query := fmt.Sprintf(`SELECT id, COALESCE(original_name, file_name) AS original_name, file_extension, owner_id, folder_id, size_bytes, mime_type, uploaded_at FROM %s ORDER BY uploaded_at DESC`, tn)
 	rows, err := p.db.Query(query)
 	if err != nil {
 		return nil, err

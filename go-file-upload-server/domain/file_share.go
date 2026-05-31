@@ -10,8 +10,10 @@ import (
 type FileShare struct {
     Id          string    `json:"id"`
     FileID      string    `json:"fileId"`
+    FileName    string    `json:"fileName,omitempty"`     // Populated from file_uploads on retrieval
     OwnerID     string    `json:"ownerId"`
     GranteeID   string    `json:"granteeId"`
+    GranteeEmail string   `json:"email,omitempty"`        // Populated from users table on retrieval
     AccessLevel string    `json:"accessLevel"` // e.g. "read", "write", "delete"
     CreatedAt   time.Time `json:"createdAt"`
 }

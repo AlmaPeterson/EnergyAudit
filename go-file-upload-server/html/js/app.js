@@ -194,7 +194,7 @@ class FileUploadApp {
         list.innerHTML = '';
 
         this.files.forEach(file => {
-            const fileName = `${file.fileName}${file.fileExtension}`;
+            const fileName = `${file.originalName}.${file.extension}`;
             const uploadDate = new Date(file.uploadedAt).toLocaleString();
             
             const item = document.createElement('div');
@@ -262,7 +262,7 @@ class FileUploadApp {
         select.innerHTML = '<option value="">Choose a file...</option>';
 
         this.files.forEach(file => {
-            const fileName = `${file.fileName}${file.fileExtension}`;
+            const fileName = `${file.originalName}.${file.extension}`;
             const option = document.createElement('option');
             option.value = file.id;
             option.textContent = fileName;
@@ -272,18 +272,18 @@ class FileUploadApp {
 
     async handleCreateShare() {
         const fileId = document.getElementById('shareFileSelect').value;
-        const granteeId = document.getElementById('shareGranteeId').value.trim();
+        const granteeEmail = document.getElementById('shareGranteeId').value.trim();
         const accessLevel = document.getElementById('shareAccessLevel').value;
 
         UIManager.setError('shareError', '');
 
-        if (!fileId || !granteeId) {
-            UIManager.setError('shareError', 'Please select a file and enter grantee ID');
+        if (!fileId || !granteeEmail) {
+            UIManager.setError('shareError', 'Please select a file and enter recipient email');
             return;
         }
 
         try {
-            await APIClient.createShare(fileId, granteeId, accessLevel);
+            await APIClient.createShare(fileId, granteeEmail, accessLevel);
             UIManager.showToast('File shared successfully');
             document.getElementById('shareFileSelect').value = '';
             document.getElementById('shareGranteeId').value = '';

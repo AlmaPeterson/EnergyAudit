@@ -132,10 +132,10 @@ class APIClient {
     }
 
     // Sharing
-    static async createShare(fileId, granteeId, accessLevel) {
+    static async createShare(fileId, granteeEmail, accessLevel) {
         return this.request('/shares', {
             method: 'POST',
-            body: JSON.stringify({ fileId, granteeId, accessLevel }),
+            body: JSON.stringify({ fileId, granteeEmail, accessLevel }),
         });
     }
 

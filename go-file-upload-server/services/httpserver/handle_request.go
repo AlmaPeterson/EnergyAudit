@@ -82,14 +82,15 @@ func (h *HttpServer) getParams(req *http.Request, maxSize ...int64) (map[string]
 		return nil, err
 	}
 
-	// If the request is multipart/form-data prefer parsing the form first
+	// If the request is multipart/form-data prefer parsing the form first.
+	// We do not restore req.Body after this because multipart parsing stores the form data
+	// and the handler can use r.FormFile / r.ParseMultipartForm without re-reading the body.
 	contentType := req.Header.Get("Content-Type")
 	if strings.Contains(contentType, "multipart/") || strings.Contains(contentType, "multipart/form-data") {
 		params, err := decodeFormDataToMap(req, size)
 		if err != nil {
 			return nil, err
 		}
-		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		return params, nil
 	}
 

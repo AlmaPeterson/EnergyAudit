@@ -7,22 +7,29 @@ import (
 	"strings"
 
 	"go-file-upload-server/domain"
+	userrepo "go-file-upload-server/repositories/user"
 	"go-file-upload-server/services/httpserver"
 )
 
 // SharesController manages creating/listing/deleting file shares.
 type SharesController struct {
-	repo        domain.FileUploadRepository // we'll use the concrete fileupload Postgres repo which implements share methods
-	errorHandler *httpserver.HttpErrorHandler
+	repo          domain.FileUploadRepository // we'll use the concrete fileupload Postgres repo which implements share methods
+	userRepo      *userrepo.PostgresUserRepository // for looking up users by email
+	errorHandler  *httpserver.HttpErrorHandler
+	authMiddleware func(http.HandlerFunc) http.HandlerFunc
 }
 
-func NewSharesController(repo domain.FileUploadRepository, errorHandler *httpserver.HttpErrorHandler) SharesController {
-	return SharesController{repo: repo, errorHandler: errorHandler}
+func NewSharesController(repo domain.FileUploadRepository, userRepo *userrepo.PostgresUserRepository, errorHandler *httpserver.HttpErrorHandler, authMiddleware func(http.HandlerFunc) http.HandlerFunc) SharesController {
+	return SharesController{repo: repo, userRepo: userRepo, errorHandler: errorHandler, authMiddleware: authMiddleware}
 }
 
 func (s SharesController) BeforeAction(handler http.HandlerFunc) http.HandlerFunc {
+	h := handler
+	if s.authMiddleware != nil {
+		h = s.authMiddleware(h)
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		handler(w, r)
+		h(w, r)
 	}
 }
 
@@ -36,7 +43,7 @@ func (s SharesController) Routes() []httpserver.Route {
 
 type createShareRequest struct {
 	FileID      string `json:"fileId"`
-	GranteeID   string `json:"granteeId"`
+	GranteeEmail string `json:"granteeEmail"` // Changed from granteeId to email
 	AccessLevel string `json:"accessLevel"`
 }
 
@@ -52,8 +59,19 @@ func (s SharesController) HandleCreateShare(w http.ResponseWriter, r *http.Reque
 		s.errorHandler.HandleError(http.StatusBadRequest, w, err)
 		return
 	}
-	if req.FileID == "" || req.GranteeID == "" || req.AccessLevel == "" {
-		s.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("fileId, granteeId and accessLevel are required"))
+	if req.FileID == "" || req.GranteeEmail == "" || req.AccessLevel == "" {
+		s.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("fileId, granteeEmail and accessLevel are required"))
+		return
+	}
+
+	// Look up the grantee user by email
+	granteeUser, err := s.userRepo.GetByEmail(req.GranteeEmail)
+	if err != nil {
+		s.errorHandler.HandleError(http.StatusInternalServerError, w, fmt.Errorf("failed to lookup user"))
+		return
+	}
+	if granteeUser == nil {
+		s.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("user with email %s not found", req.GranteeEmail))
 		return
 	}
 
@@ -69,7 +87,13 @@ func (s SharesController) HandleCreateShare(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	fs, err := domain.NewFileShare(req.FileID, current.Id, req.GranteeID, strings.ToLower(req.AccessLevel))
+	// Prevent sharing with self
+	if granteeUser.Id == current.Id {
+		s.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("cannot share file with yourself"))
+		return
+	}
+
+	fs, err := domain.NewFileShare(req.FileID, current.Id, granteeUser.Id, strings.ToLower(req.AccessLevel))
 	if err != nil {
 		s.errorHandler.HandleError(http.StatusBadRequest, w, err)
 		return
