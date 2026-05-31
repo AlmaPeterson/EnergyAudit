@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -76,6 +77,11 @@ func (h *HttpServer) getParams(req *http.Request, maxSize ...int64) (map[string]
 		return params, nil
 	}
 
+	bodyBytes, err := readRequestBody(req)
+	if err != nil {
+		return nil, err
+	}
+
 	// If the request is multipart/form-data prefer parsing the form first
 	contentType := req.Header.Get("Content-Type")
 	if strings.Contains(contentType, "multipart/") || strings.Contains(contentType, "multipart/form-data") {
@@ -83,33 +89,46 @@ func (h *HttpServer) getParams(req *http.Request, maxSize ...int64) (map[string]
 		if err != nil {
 			return nil, err
 		}
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		return params, nil
 	}
 
 	// Try to decode JSON body first, fall back to form data (urlencoded or multipart)
-	params, err := decodeRequestBodyToMap(req)
+	params, err := decodeJSONBodyToMap(bodyBytes)
 	if err != nil {
 		params, err = decodeFormDataToMap(req, size)
 		if err != nil {
 			return nil, err
 		}
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		return params, nil
 	}
 
+	req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	return params, nil
 }
 
-func decodeRequestBodyToMap(req *http.Request) (map[string]any, error) {
+func readRequestBody(req *http.Request) ([]byte, error) {
 	if req.Body == nil {
-		return map[string]any{}, nil
+		return []byte{}, nil
 	}
 
-	bytes, err := io.ReadAll(req.Body)
+	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
 	}
 
+	req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	return bodyBytes, nil
+}
+
+func decodeJSONBodyToMap(body []byte) (map[string]any, error) {
+	if len(body) == 0 {
+		return map[string]any{}, nil
+	}
+
 	var decoded map[string]any
-	err = json.Unmarshal(bytes, &decoded)
+	err := json.Unmarshal(body, &decoded)
 	if err != nil {
 		return nil, err
 	}

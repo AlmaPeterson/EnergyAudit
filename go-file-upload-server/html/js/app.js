@@ -1,204 +1,5 @@
 // ============================================================================
-// Secure File Upload Manager - Frontend Application
-// ============================================================================
-
-// Configuration
-const API_BASE = '/api';
-const TOKEN_KEY = 'fileUploadToken';
-
-// ============================================================================
-// Authentication Manager
-// ============================================================================
-
-class AuthManager {
-    static getToken() {
-        return localStorage.getItem(TOKEN_KEY);
-    }
-
-    static setToken(token) {
-        localStorage.setItem(TOKEN_KEY, token);
-    }
-
-    static clearToken() {
-        localStorage.removeItem(TOKEN_KEY);
-    }
-
-    static isAuthenticated() {
-        return !!this.getToken();
-    }
-
-    static getAuthHeader() {
-        const token = this.getToken();
-        return token ? { 'Authorization': `Bearer ${token}` } : {};
-    }
-}
-
-// ============================================================================
-// API Client
-// ============================================================================
-
-class APIClient {
-    static async request(endpoint, options = {}) {
-        const headers = {
-            ...options.headers,
-            ...AuthManager.getAuthHeader(),
-        };
-
-        const config = {
-            ...options,
-            headers,
-        };
-
-        try {
-            const response = await fetch(`${API_BASE}${endpoint}`, config);
-            
-            if (response.status === 401) {
-                // Token expired or invalid
-                AuthManager.clearToken();
-                window.location.reload();
-                return;
-            }
-
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({}));
-                throw new Error(error.message || `HTTP ${response.status}`);
-            }
-
-            // Handle 204 No Content
-            if (response.status === 204) {
-                return null;
-            }
-
-            return await response.json();
-        } catch (error) {
-            console.error('API Error:', error);
-            throw error;
-        }
-    }
-
-    // Authentication
-    static async signup(firstName, lastName, email, password) {
-        return this.request('/signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ firstName, lastName, email, password }),
-        });
-    }
-
-    static async login(email, password) {
-        return this.request('/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-        });
-    }
-
-    // File Uploads
-    static async getUploads() {
-        return this.request('/uploads');
-    }
-
-    static async uploadFile(file, folderId = null) {
-        const formData = new FormData();
-        formData.append('file', file);
-        if (folderId) {
-            formData.append('folderId', folderId);
-        }
-
-        return this.request('/uploads', {
-            method: 'POST',
-            body: formData,
-        });
-    }
-
-    static async deleteUpload(id) {
-        return this.request(`/uploads/${id}`, {
-            method: 'DELETE',
-        });
-    }
-
-    static getDownloadUrl(id) {
-        return `${API_BASE.replace('/api', '')}/uploads/${id}`;
-    }
-
-    // Sharing
-    static async createShare(fileId, granteeId, accessLevel) {
-        return this.request('/shares', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileId, granteeId, accessLevel }),
-        });
-    }
-
-    static async getShares() {
-        return this.request('/shares');
-    }
-
-    static async deleteShare(id) {
-        return this.request(`/shares/${id}`, {
-            method: 'DELETE',
-        });
-    }
-}
-
-// ============================================================================
-// UI Manager
-// ============================================================================
-
-class UIManager {
-    static showAuthSection() {
-        document.getElementById('authSection').classList.remove('hidden');
-        document.getElementById('appSection').classList.add('hidden');
-    }
-
-    static showAppSection() {
-        document.getElementById('authSection').classList.add('hidden');
-        document.getElementById('appSection').classList.remove('hidden');
-    }
-
-    static setLoading(elementId, isLoading) {
-        const element = document.getElementById(elementId);
-        if (!element) return;
-        
-        if (isLoading) {
-            element.classList.remove('hidden');
-        } else {
-            element.classList.add('hidden');
-        }
-    }
-
-    static setError(elementId, message) {
-        const element = document.getElementById(elementId);
-        if (!element) return;
-        
-        if (message) {
-            element.textContent = message;
-            element.classList.remove('hidden');
-        } else {
-            element.textContent = '';
-            element.classList.add('hidden');
-        }
-    }
-
-    static showToast(message, type = 'success') {
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.textContent = message;
-        document.body.appendChild(toast);
-
-        setTimeout(() => {
-            toast.classList.add('show');
-        }, 10);
-
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 300);
-        }, 3000);
-    }
-}
-
-// ============================================================================
-// App State & Logic
+// Main App Controller
 // ============================================================================
 
 class FileUploadApp {
@@ -292,9 +93,9 @@ class FileUploadApp {
     }
 
     async handleSignup() {
-        const firstName = document.getElementById('signupFirstName').value;
-        const lastName = document.getElementById('signupLastName').value;
-        const email = document.getElementById('signupEmail').value;
+        const firstName = document.getElementById('signupFirstName').value.trim();
+        const lastName = document.getElementById('signupLastName').value.trim();
+        const email = document.getElementById('signupEmail').value.trim();
         const password = document.getElementById('signupPassword').value;
 
         if (!firstName || !lastName || !email || !password) {
@@ -302,11 +103,20 @@ class FileUploadApp {
             return;
         }
 
+        if (password.length < 6) {
+            UIManager.setError('signupError', 'Password must be at least 6 characters');
+            return;
+        }
+
         try {
             await APIClient.signup(firstName, lastName, email, password);
-            UIManager.showToast('Account created successfully');
+            UIManager.showToast('Account created successfully! Please log in.');
             this.switchAuthForm('login');
             document.getElementById('loginEmail').value = email;
+            document.getElementById('signupFirstName').value = '';
+            document.getElementById('signupLastName').value = '';
+            document.getElementById('signupEmail').value = '';
+            document.getElementById('signupPassword').value = '';
         } catch (error) {
             UIManager.setError('signupError', error.message);
         }
@@ -337,8 +147,6 @@ class FileUploadApp {
         UIManager.setLoading('uploadProgress', true);
 
         try {
-            // Note: The backend may not support progress events with fetch,
-            // but we're setting up for it
             await APIClient.uploadFile(file);
             UIManager.showToast('File uploaded successfully');
             document.getElementById('fileInput').value = '';
@@ -393,27 +201,47 @@ class FileUploadApp {
             item.className = 'file-item';
             item.innerHTML = `
                 <div class="file-info">
-                    <div class="file-name">${this.escapeHtml(fileName)}</div>
+                    <div class="file-name">${UIManager.escapeHtml(fileName)}</div>
                     <div class="file-meta">
                         Uploaded: ${uploadDate}
                     </div>
                 </div>
                 <div class="file-actions">
-                    <a href="${APIClient.getDownloadUrl(file.id)}" class="btn btn-small" download>
+                    <button class="btn btn-small" data-download-id="${file.id}" data-file-name="${UIManager.escapeHtml(fileName)}">
                         Download
-                    </a>
+                    </button>
                     <button class="btn btn-small btn-danger" data-file-id="${file.id}">
                         Delete
                     </button>
                 </div>
             `;
 
+            item.querySelector('[data-download-id]').addEventListener('click', (e) => {
+                const button = e.target;
+                this.handleDownloadFile(button.dataset.downloadId, button.dataset.fileName);
+            });
             item.querySelector('[data-file-id]').addEventListener('click', (e) => {
                 this.handleDeleteFile(e.target.dataset.fileId);
             });
 
             list.appendChild(item);
         });
+    }
+
+    async handleDownloadFile(fileId, fileName) {
+        try {
+            const blob = await APIClient.downloadUpload(fileId);
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = fileName;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            UIManager.showToast(error.message, 'error');
+        }
     }
 
     async handleDeleteFile(fileId) {
@@ -444,24 +272,21 @@ class FileUploadApp {
 
     async handleCreateShare() {
         const fileId = document.getElementById('shareFileSelect').value;
-        const granteeEmail = document.getElementById('shareGranteeEmail').value;
+        const granteeId = document.getElementById('shareGranteeId').value.trim();
         const accessLevel = document.getElementById('shareAccessLevel').value;
 
         UIManager.setError('shareError', '');
 
-        if (!fileId || !granteeEmail) {
-            UIManager.setError('shareError', 'Please select a file and enter grantee email');
+        if (!fileId || !granteeId) {
+            UIManager.setError('shareError', 'Please select a file and enter grantee ID');
             return;
         }
 
         try {
-            // The backend expects granteeId, but we have email
-            // We'll send the email and let the backend resolve it
-            // If the backend doesn't support this, we'd need a user lookup endpoint
-            await APIClient.createShare(fileId, granteeEmail, accessLevel);
+            await APIClient.createShare(fileId, granteeId, accessLevel);
             UIManager.showToast('File shared successfully');
             document.getElementById('shareFileSelect').value = '';
-            document.getElementById('shareGranteeEmail').value = '';
+            document.getElementById('shareGranteeId').value = '';
             await this.loadShares();
         } catch (error) {
             UIManager.setError('shareError', error.message);
@@ -515,9 +340,9 @@ class FileUploadApp {
             const createdDate = new Date(share.createdAt).toLocaleString();
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${this.escapeHtml(share.fileName || 'Unknown')}</td>
-                <td>${this.escapeHtml(share.email || 'Unknown')}</td>
-                <td>${this.escapeHtml(share.accessLevel || 'view')}</td>
+                <td>${UIManager.escapeHtml(share.fileName || 'Unknown')}</td>
+                <td>${UIManager.escapeHtml(share.email || 'Unknown')}</td>
+                <td>${UIManager.escapeHtml(share.accessLevel || 'view')}</td>
                 <td>${createdDate}</td>
                 <td>
                     <button class="btn btn-small btn-danger" data-share-id="${share.id}">
@@ -556,12 +381,6 @@ class FileUploadApp {
         } else {
             UIManager.showAuthSection();
         }
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 }
 
