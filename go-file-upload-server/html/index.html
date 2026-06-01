@@ -3,18 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure File Upload Manager</title>
+    <title>Energy Audit MVP</title>
     <link rel="stylesheet" href="index.css">
 </head>
 <body>
     <div class="grid-bg"></div>
-    
+
     <!-- Auth Section (shown when not logged in) -->
     <div id="authSection" class="auth-container">
         <div class="auth-card">
-            <h1>File Upload Manager</h1>
-            
-            <!-- Login Form -->
+            <h1>Energy Audit MVP</h1>
             <div id="loginForm" class="auth-form active">
                 <h2>Login</h2>
                 <div class="form-group">
@@ -30,7 +28,6 @@
                 <div id="loginError" class="error-message"></div>
             </div>
 
-            <!-- Signup Form -->
             <div id="signupForm" class="auth-form">
                 <h2>Create Account</h2>
                 <div class="form-group">
@@ -58,10 +55,12 @@
 
     <!-- Main App Section (shown when logged in) -->
     <div id="appSection" class="app-container hidden">
-        <!-- Header -->
         <header class="app-header">
             <div class="header-content">
-                <h1>File Upload Manager</h1>
+                <div>
+                    <h1>Energy Audit MVP</h1>
+                    <p class="subtitle">Manage jobs, tasks, time entries, audits, and photos in one place.</p>
+                </div>
                 <div class="header-user">
                     <span id="userDisplay"></span>
                     <button id="logoutBtn" class="btn btn-small">Logout</button>
@@ -69,109 +68,141 @@
             </div>
         </header>
 
-        <!-- Main Content -->
         <main class="app-main">
-            <!-- Upload Section -->
-            <section class="card">
-                <h2>Upload File</h2>
-                <div class="upload-area" id="uploadArea">
-                    <input type="file" id="fileInput" hidden>
-                    <div class="upload-placeholder">
-                        <p>Click to select a file or drag and drop</p>
-                        <small>Max file size: 100MB</small>
+            <div class="content-layout">
+                <aside class="sidebar card">
+                    <div class="section-header">
+                        <h2>Jobs</h2>
+                        <button id="refreshJobsBtn" class="btn btn-small">Refresh</button>
                     </div>
-                </div>
-                <div id="uploadProgress" class="progress-bar hidden">
-                    <div id="progressFill" class="progress-fill"></div>
-                </div>
-                <div id="uploadError" class="error-message"></div>
-            </section>
-
-            <!-- Folder Section -->
-            <section class="card">
-                <div class="section-header">
-                    <h2>Folders</h2>
-                    <div class="folder-actions">
-                        <button id="refreshFoldersBtn" class="btn btn-small">Refresh</button>
-                        <button id="goRootBtn" class="btn btn-small">Root</button>
-                    </div>
-                </div>
-                <div class="folder-controls">
                     <div class="form-group">
-                        <label for="folderNameInput">New Folder Name</label>
-                        <input type="text" id="folderNameInput" placeholder="Folder name">
+                        <label for="jobTitleInput">New Job Title</label>
+                        <input type="text" id="jobTitleInput" placeholder="Audit title">
                     </div>
-                    <button id="createFolderBtn" class="btn btn-primary">Create Folder</button>
-                </div>
-                <div id="folderCurrentPath" class="folder-path">Current folder: Root</div>
-                <div id="foldersLoading" class="loading">Loading folders...</div>
-                <div id="foldersEmpty" class="empty-state hidden">
-                    <p>No folders yet.</p>
-                </div>
-                <div id="foldersList" class="folders-list hidden">
-                    <!-- Folders will be populated here -->
-                </div>
-            </section>
+                    <div class="form-group">
+                        <label for="jobDescriptionInput">Description</label>
+                        <textarea id="jobDescriptionInput" rows="3" placeholder="Optional details"></textarea>
+                    </div>
+                    <button id="createJobBtn" class="btn btn-primary">Create Job</button>
+                    <div id="jobError" class="error-message"></div>
+                    <div id="jobsList" class="jobs-list"></div>
+                </aside>
 
-            <!-- Files Section -->
-            <section class="card">
-                <div class="section-header">
-                    <h2>My Files</h2>
-                    <button id="refreshFilesBtn" class="btn btn-small">Refresh</button>
-                </div>
-                
-                <div id="filesLoading" class="loading">Loading files...</div>
-                
-                <div id="filesEmpty" class="empty-state hidden">
-                    <p>No files yet. Upload one to get started!</p>
-                </div>
-
-                <div id="filesList" class="files-list hidden">
-                    <!-- Files will be populated here -->
-                </div>
-            </section>
-
-            <!-- Sharing Section -->
-            <section class="card">
-                <h2>File Sharing</h2>
-                
-                <div class="share-create">
-                    <h3>Share a File</h3>
-                    <div class="form-row">
+                <section class="main-panel">
+                    <section class="card">
+                        <div class="section-header">
+                            <div>
+                                <h2>Tasks</h2>
+                                <p id="selectedJobTitle" class="subtitle">Select a job to manage tasks.</p>
+                            </div>
+                            <button id="refreshTasksBtn" class="btn btn-small">Refresh</button>
+                        </div>
                         <div class="form-group">
-                            <label for="shareFileSelect">Select File</label>
-                            <select id="shareFileSelect">
-                                <option value="">Choose a file...</option>
+                            <label for="taskTitleInput">Task Title</label>
+                            <input type="text" id="taskTitleInput" placeholder="Task title">
+                        </div>
+                        <div class="form-group">
+                            <label for="taskDescriptionInput">Details</label>
+                            <textarea id="taskDescriptionInput" rows="3" placeholder="Task description"></textarea>
+                        </div>
+                        <button id="createTaskBtn" class="btn btn-primary">Add Task</button>
+                        <div id="taskError" class="error-message"></div>
+                        <div id="tasksList" class="tasks-list"></div>
+                    </section>
+
+                    <section class="card">
+                        <div class="section-header">
+                            <div>
+                                <h2>Time Entries</h2>
+                                <p id="selectedTaskTitle" class="subtitle">Select a task to log time.</p>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="timeEntryStartInput">Start</label>
+                                <input type="datetime-local" id="timeEntryStartInput">
+                            </div>
+                            <div class="form-group">
+                                <label for="timeEntryEndInput">End</label>
+                                <input type="datetime-local" id="timeEntryEndInput">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="timeEntryNoteInput">Note</label>
+                            <textarea id="timeEntryNoteInput" rows="2" placeholder="Optional note"></textarea>
+                        </div>
+                        <div class="form-row">
+                            <button id="createTimeEntryBtn" class="btn btn-primary">Add Entry</button>
+                            <button id="stopTimeEntryBtn" class="btn btn-small">Stop Active Timer</button>
+                        </div>
+                        <div id="timeEntryError" class="error-message"></div>
+                        <div id="timeEntriesList" class="entries-list"></div>
+                    </section>
+
+                    <section class="card">
+                        <div class="section-header">
+                            <h2>Energy Audit</h2>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="auditEasy"> Easy
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="auditHard"> Hard
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="auditFun"> Fun
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="auditNotFun"> Not Fun
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="auditEfficiencyRating">Efficiency Rating</label>
+                            <input type="number" id="auditEfficiencyRating" min="1" max="10" placeholder="1-10">
+                        </div>
+                        <div class="form-group">
+                            <label for="auditNotes">Notes</label>
+                            <textarea id="auditNotes" rows="3" placeholder="Observations and findings"></textarea>
+                        </div>
+                        <button id="createAuditBtn" class="btn btn-primary">Save Audit</button>
+                        <div id="auditError" class="error-message"></div>
+                        <div id="auditStatus" class="loading hidden">Loading audits...</div>
+                        <div id="auditList" class="entries-list"></div>
+                    </section>
+
+                    <section class="card">
+                        <div class="section-header">
+                            <h2>Photos</h2>
+                        </div>
+                        <div class="form-group">
+                            <label for="imageUploadInput">Upload Image</label>
+                            <input type="file" id="imageUploadInput" accept="image/*">
+                        </div>
+                        <div class="form-group">
+                            <label for="imagePhotoType">Photo Type</label>
+                            <select id="imagePhotoType">
+                                <option value="site">Site</option>
+                                <option value="equipment">Equipment</option>
+                                <option value="issue">Issue</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="shareGranteeId">Recipient Email</label>
-                            <input type="email" id="shareGranteeId" placeholder="recipient@example.com">
-                        </div>
-                        <div class="form-group">
-                            <label for="shareAccessLevel">Access Level</label>
-                            <select id="shareAccessLevel">
-                                <option value="read">View/Download</option>
-                                <option value="write">View/Download and Share</option>
-                                <option value="delete">View/Download, Share, and Delete</option>
-                            </select>
-                        </div>
-                        <button id="createShareBtn" class="btn btn-primary">Share</button>
-                    </div>
-                    <div id="shareError" class="error-message"></div>
-                </div>
-
-                <div class="shares-list">
-                    <h3>My Shares</h3>
-                    <div id="sharesLoading" class="loading">Loading shares...</div>
-                    <div id="sharesEmpty" class="empty-state hidden">
-                        <p>No shares yet.</p>
-                    </div>
-                    <div id="sharesList" class="shares-table hidden">
-                        <!-- Shares will be populated here -->
-                    </div>
-                </div>
-            </section>
+                        <button id="uploadImageBtn" class="btn btn-primary">Upload Photo</button>
+                        <div id="imageError" class="error-message"></div>
+                        <div id="imagesList" class="images-list"></div>
+                    </section>
+                </section>
+            </div>
         </main>
     </div>
 

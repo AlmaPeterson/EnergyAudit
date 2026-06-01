@@ -38,7 +38,7 @@ func (f FoldersController) Routes() []httpserver.Route {
 	return []httpserver.Route{
 		{Pattern: "/api/folders", Method: http.MethodGet, Handler: f.HandleListFolders},
 		{Pattern: "/api/folders", Method: http.MethodPost, Handler: f.HandleCreateFolder},
-		{Pattern: "/api/folders/", Method: http.MethodGet, Handler: f.HandleGetFolder},
+		{Pattern: "/api/folders/", Method: http.MethodGet, Handler: f.HandleFolderDetailRequest},
 		{Pattern: "/api/folders/", Method: http.MethodDelete, Handler: f.HandleDeleteFolder},
 	}
 }
@@ -69,6 +69,22 @@ func (f FoldersController) HandleListFolders(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, folders)
 }
 
+func (f FoldersController) HandleFolderDetailRequest(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/folders/")
+	path = strings.TrimSuffix(path, "/")
+	if path == "" {
+		f.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("folder ID is required"))
+		return
+	}
+
+	if strings.HasSuffix(r.URL.Path, "/contents") {
+		f.HandleGetFolderContents(w, r)
+		return
+	}
+
+	f.HandleGetFolder(w, r)
+}
+
 func (f FoldersController) HandleGetFolder(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/api/folders/")
 	id = strings.TrimSuffix(id, "/")
@@ -90,11 +106,49 @@ func (f FoldersController) HandleGetFolder(w http.ResponseWriter, r *http.Reques
 	}
 
 	if folder.OwnerID != current.Id {
-		f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
-		return
+		allowed, err := f.repo.UserHasFolderAccess(id, current.Id)
+		if err != nil {
+			f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
+			return
+		}
+		if !allowed {
+			f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, folder)
+}
+
+func (f FoldersController) HandleGetFolderContents(w http.ResponseWriter, r *http.Request) {
+	trimmed := strings.TrimPrefix(r.URL.Path, "/api/folders/")
+	trimmed = strings.TrimSuffix(trimmed, "/contents")
+	trimmed = strings.TrimSuffix(trimmed, "/")
+	if trimmed == "" {
+		f.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("folder ID is required"))
+		return
+	}
+
+	current := httpserver.GetCurrentUser(r)
+	if current == nil {
+		f.errorHandler.HandleError(http.StatusUnauthorized, w, fmt.Errorf("authentication required"))
+		return
+	}
+
+	folders, uploads, err := f.repo.ListFolderContents(current.Id, trimmed)
+	if err != nil {
+		if strings.Contains(err.Error(), "forbidden") {
+			f.errorHandler.HandleError(http.StatusForbidden, w, err)
+			return
+		}
+		f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"folders": folders,
+		"uploads": uploads,
+	})
 }
 
 func (f FoldersController) HandleCreateFolder(w http.ResponseWriter, r *http.Request) {

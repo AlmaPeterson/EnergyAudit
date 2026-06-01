@@ -30,7 +30,7 @@ class APIClient {
 
         try {
             const response = await fetch(`${API_BASE}${endpoint}`, config);
-            
+
             if (response.status === 401) {
                 AuthManager.clearToken();
                 window.location.reload();
@@ -73,43 +73,82 @@ class APIClient {
         });
     }
 
-    // File Uploads
-    static async getUploads(folderId = null) {
-        const query = folderId ? `?folderId=${encodeURIComponent(folderId)}` : '';
-        return this.request(`/uploads${query}`);
+    // Jobs
+    static async getJobs() {
+        return this.request('/jobs');
     }
 
-    static async getFolders(parentId = null) {
-        const query = parentId ? `?parentId=${encodeURIComponent(parentId)}` : '';
-        return this.request(`/folders${query}`);
-    }
-
-    static async getFolderById(id) {
-        return this.request(`/folders/${encodeURIComponent(id)}`);
-    }
-
-    static async createFolder(name, parentId = null) {
-        return this.request('/folders', {
+    static async createJob(title, description) {
+        return this.request('/jobs', {
             method: 'POST',
-            body: JSON.stringify({ name, parentId }),
+            body: JSON.stringify({ title, description }),
         });
     }
 
-    static async deleteFolder(id) {
-        return this.request(`/folders/${encodeURIComponent(id)}`, {
-            method: 'DELETE',
+    // Tasks
+    static async listTasks(jobId) {
+        return this.request(`/tasks?jobId=${encodeURIComponent(jobId)}`);
+    }
+
+    static async getTask(id) {
+        return this.request(`/tasks/${encodeURIComponent(id)}`);
+    }
+
+    static async createTask(jobId, title, description) {
+        return this.request('/tasks', {
+            method: 'POST',
+            body: JSON.stringify({ jobId, title, description }),
         });
     }
 
-    static async uploadFile(file, folderId = null) {
+    static async updateTask(taskId, data) {
+        return this.request(`/tasks/${encodeURIComponent(taskId)}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        });
+    }
+
+    // Time entries
+    static async listTimeEntries(taskId) {
+        return this.request(`/time-entries?taskId=${encodeURIComponent(taskId)}`);
+    }
+
+    static async createTimeEntry(taskId, startTime, endTime, note) {
+        return this.request('/time-entries', {
+            method: 'POST',
+            body: JSON.stringify({ taskId, startTime, endTime, note }),
+        });
+    }
+
+    static async stopTimeEntry(entryId) {
+        return this.request(`/time-entries/${encodeURIComponent(entryId)}/stop`, {
+            method: 'PUT',
+        });
+    }
+
+    // Energy audits
+    static async listEnergyAudits(taskId) {
+        return this.request(`/audits?taskId=${encodeURIComponent(taskId)}`);
+    }
+
+    static async createEnergyAudit(jobId, taskId, easy, hard, fun, notFun, efficiencyRating, notes) {
+        return this.request('/audits', {
+            method: 'POST',
+            body: JSON.stringify({ jobId, taskId, easy, hard, fun, notFun, efficiencyRating, notes }),
+        });
+    }
+
+    // Images
+    static async uploadImage(file, taskId, jobId, photoType) {
         const formData = new FormData();
-        formData.append('file', file);
-        if (folderId) {
-            formData.append('folderId', folderId);
+        formData.append('image', file);
+        formData.append('taskId', taskId);
+        if (jobId) {
+            formData.append('jobId', jobId);
         }
+        formData.append('photoType', photoType);
 
-        // Don't set Content-Type for FormData - browser will set it with boundary
-        const response = await fetch(`${API_BASE}/uploads`, {
+        const response = await fetch(`${API_BASE}/images`, {
             method: 'POST',
             body: formData,
             headers: AuthManager.getAuthHeader(),
@@ -122,26 +161,19 @@ class APIClient {
         }
 
         if (!response.ok) {
-            const errorMessage = await APIClient.extractError(response);
+            const errorMessage = await this.extractError(response);
             throw new Error(errorMessage || `HTTP ${response.status}`);
         }
 
-        const contentType = response.headers.get('Content-Type') || '';
-        if (contentType.includes('application/json')) {
-            return await response.json();
-        }
-
-        return await response.text();
+        return response.json();
     }
 
-    static async deleteUpload(id) {
-        return this.request(`/uploads/${id}`, {
-            method: 'DELETE',
-        });
+    static async listImages(taskId) {
+        return this.request(`/images?taskId=${encodeURIComponent(taskId)}`);
     }
 
-    static async downloadUpload(id) {
-        const response = await fetch(`${API_BASE.replace('/api', '')}/uploads/${id}`, {
+    static async downloadImage(id) {
+        const response = await fetch(`${API_BASE.replace('/api', '')}/images/${encodeURIComponent(id)}`, {
             method: 'GET',
             headers: AuthManager.getAuthHeader(),
         });
@@ -152,23 +184,5 @@ class APIClient {
         }
 
         return await response.blob();
-    }
-
-    // Sharing
-    static async createShare(fileId, granteeEmail, accessLevel) {
-        return this.request('/shares', {
-            method: 'POST',
-            body: JSON.stringify({ fileId, granteeEmail, accessLevel }),
-        });
-    }
-
-    static async getShares() {
-        return this.request('/shares');
-    }
-
-    static async deleteShare(id) {
-        return this.request(`/shares/${id}`, {
-            method: 'DELETE',
-        });
     }
 }

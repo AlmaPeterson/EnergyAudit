@@ -73,6 +73,21 @@ func main() {
 	sharesController := controllers.NewSharesController(fileUploadRepo, &userRepo, &errorHandler, authMw)
 	controllerList = append(controllerList, sharesController)
 
+	jobsController := controllers.NewJobsController(fileUploadRepo, &errorHandler, authMw)
+	controllerList = append(controllerList, jobsController)
+
+	tasksController := controllers.NewTasksController(fileUploadRepo, &errorHandler, authMw)
+	controllerList = append(controllerList, tasksController)
+
+	timeEntriesController := controllers.NewTimeEntriesController(fileUploadRepo, &errorHandler, authMw)
+	controllerList = append(controllerList, timeEntriesController)
+
+	energyAuditsController := controllers.NewEnergyAuditsController(fileUploadRepo, &errorHandler, authMw)
+	controllerList = append(controllerList, energyAuditsController)
+
+	imagesController := controllers.NewImagesController(fileUploadRepo, &errorHandler, authMw)
+	controllerList = append(controllerList, imagesController)
+
 	routes, err := routes.Routes(controllerList, applicationController)
 	if err != nil {
 		panic(err)

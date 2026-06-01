@@ -193,67 +193,149 @@ func (p PostgresFileUploadRepository) ensureSchema() error {
 	// Create file_shares table
 	sharesQuery := `CREATE TABLE IF NOT EXISTS file_shares (
 		id BIGSERIAL PRIMARY KEY,
-		file_id BIGINT NOT NULL,
+		resource_type TEXT NOT NULL DEFAULT 'file',
+		resource_id TEXT NOT NULL,
 		owner_id TEXT NOT NULL,
 		grantee_id TEXT NOT NULL,
 		access_level TEXT NOT NULL,
-		created_at TIMESTAMPTZ NOT NULL
+		created_at TIMESTAMPTZ NOT NULL,
+		file_id BIGINT
 	)`
 	if _, err := p.db.Exec(sharesQuery); err != nil {
 		return err
 	}
 
-	return nil
+    // Create jobs table
+    jobsQuery := `CREATE TABLE IF NOT EXISTS jobs (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+    )`
+    if _, err := p.db.Exec(jobsQuery); err != nil {
+        return err
+    }
+
+    // Create tasks table
+    tasksQuery := `CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+    )`
+    if _, err := p.db.Exec(tasksQuery); err != nil {
+        return err
+    }
+
+    // Create time_entries table
+    timeEntriesQuery := `CREATE TABLE IF NOT EXISTS time_entries (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        start_time TIMESTAMPTZ NOT NULL,
+        end_time TIMESTAMPTZ NULL,
+        duration_minutes INT NOT NULL,
+        note TEXT,
+        created_at TIMESTAMPTZ NOT NULL
+    )`
+    if _, err := p.db.Exec(timeEntriesQuery); err != nil {
+        return err
+    }
+
+    // Create energy_audits table
+    energyAuditsQuery := `CREATE TABLE IF NOT EXISTS energy_audits (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        job_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        easy BOOLEAN NOT NULL,
+        hard BOOLEAN NOT NULL,
+        fun BOOLEAN NOT NULL,
+        not_fun BOOLEAN NOT NULL,
+        efficiency_rating INT NOT NULL,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL
+    )`
+    if _, err := p.db.Exec(energyAuditsQuery); err != nil {
+        return err
+    }
+
+    // Create image_uploads table
+    imageUploadsQuery := `CREATE TABLE IF NOT EXISTS image_uploads (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NULL,
+        task_id TEXT NULL,
+        owner_id TEXT NOT NULL,
+        original_name TEXT NOT NULL,
+        extension TEXT NOT NULL,
+        upload_uuid TEXT NOT NULL UNIQUE,
+        photo_type TEXT NOT NULL,
+        size_bytes BIGINT NOT NULL,
+        mime_type TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        data BYTEA NOT NULL
+    )`
+    if _, err := p.db.Exec(imageUploadsQuery); err != nil {
+        return err
+    }
+
+    return nil
 }
 
-// ensureColumns makes sure expected columns exist in legacy tables (safe to run repeatedly).
 func (p PostgresFileUploadRepository) ensureColumns() error {
-	tn, err := p.tableName()
-	if err != nil {
-		return err
-	}
+    tn, err := p.tableName()
+    if err != nil {
+        return err
+    }
 
-	// Add commonly-missing columns if they don't exist. Use IF NOT EXISTS where possible.
-	// Note: Postgres supports ADD COLUMN IF NOT EXISTS.
-	stmts := []string{
-		// original_name and file_extension may be missing in older schemas
-		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS original_name TEXT", tn),
-		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS file_name TEXT", tn),
-		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS file_extension TEXT", tn),
-		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS owner_id TEXT", tn),
-		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS folder_id TEXT", tn),
-		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS upload_uuid TEXT", tn),
-		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS size_bytes BIGINT DEFAULT 0", tn),
-		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS mime_type TEXT", tn),
-		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ", tn),
-	}
+    stmts := []string{
+        fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS file_name TEXT", tn),
+        fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS file_extension TEXT", tn),
+        fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS owner_id TEXT", tn),
+        fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS folder_id TEXT", tn),
+        fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS upload_uuid TEXT", tn),
+        fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS size_bytes BIGINT DEFAULT 0", tn),
+        fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS mime_type TEXT", tn),
+        fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ", tn),
+    }
 
-	for _, s := range stmts {
-		if _, err := p.db.Exec(s); err != nil {
-			return err
-		}
-	}
+    for _, s := range stmts {
+        if _, err := p.db.Exec(s); err != nil {
+            return err
+        }
+    }
 
-	// Ensure file_shares columns exist as well
-	sharesStmts := []string{
-		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS file_id BIGINT",
-		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS owner_id TEXT",
-		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS grantee_id TEXT",
-		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS access_level TEXT",
-		"ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
-	}
-	for _, s := range sharesStmts {
-		if _, err := p.db.Exec(s); err != nil {
-			return err
-		}
-	}
+    sharesStmts := []string{
+        "ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS resource_type TEXT DEFAULT 'file'",
+        "ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS resource_id TEXT",
+        "ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS owner_id TEXT",
+        "ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS grantee_id TEXT",
+        "ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS access_level TEXT",
+        "ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
+        "ALTER TABLE IF EXISTS file_shares ADD COLUMN IF NOT EXISTS file_id BIGINT",
+    }
 
-	// Backfill legacy column `file_name` from `original_name` if present
-	if _, err := p.db.Exec(fmt.Sprintf("UPDATE %s SET file_name = original_name WHERE file_name IS NULL AND original_name IS NOT NULL", tn)); err != nil {
-		return err
-	}
+    for _, s := range sharesStmts {
+        if _, err := p.db.Exec(s); err != nil {
+            return err
+        }
+    }
 
-	return nil
+    if _, err := p.db.Exec(fmt.Sprintf("UPDATE %s SET file_name = original_name WHERE file_name IS NULL AND original_name IS NOT NULL", tn)); err != nil {
+        return err
+    }
+
+    if _, err := p.db.Exec("UPDATE file_shares SET resource_id = file_id::text, resource_type = 'file' WHERE resource_id IS NULL AND file_id IS NOT NULL"); err != nil {
+        return err
+    }
+
+    return nil
 }
 
 func (p PostgresFileUploadRepository) filePathForID(id int64, extension string) string {
@@ -604,6 +686,276 @@ func (p PostgresFileUploadRepository) ListFileUploadsByFolder(ownerID string, fo
 	}
 
 	return uploads, nil
+}
+
+func (p PostgresFileUploadRepository) CreateJob(job domain.Job) (domain.Job, error) {
+    query := `INSERT INTO jobs (id, owner_id, title, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`
+    _, err := p.db.Exec(query, job.Id, job.OwnerID, job.Title, job.Description, job.CreatedAt, job.UpdatedAt)
+    if err != nil {
+        return domain.Job{}, err
+    }
+    return job, nil
+}
+
+func (p PostgresFileUploadRepository) ListJobs() ([]domain.Job, error) {
+    rows, err := p.db.Query(`SELECT id, owner_id, title, description, created_at, updated_at FROM jobs ORDER BY created_at DESC`)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    jobs := []domain.Job{}
+    for rows.Next() {
+        var job domain.Job
+        if err := rows.Scan(&job.Id, &job.OwnerID, &job.Title, &job.Description, &job.CreatedAt, &job.UpdatedAt); err != nil {
+            return nil, err
+        }
+        jobs = append(jobs, job)
+    }
+    if err := rows.Err(); err != nil {
+        return nil, err
+    }
+    return jobs, nil
+}
+
+func (p PostgresFileUploadRepository) GetJobByID(id string) (domain.Job, error) {
+    var job domain.Job
+    row := p.db.QueryRow(`SELECT id, owner_id, title, description, created_at, updated_at FROM jobs WHERE id = $1`, id)
+    if err := row.Scan(&job.Id, &job.OwnerID, &job.Title, &job.Description, &job.CreatedAt, &job.UpdatedAt); err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return domain.Job{}, fmt.Errorf("job not found")
+        }
+        return domain.Job{}, err
+    }
+    return job, nil
+}
+
+func (p PostgresFileUploadRepository) UpdateJob(job domain.Job) (domain.Job, error) {
+    query := `UPDATE jobs SET title = $1, description = $2, updated_at = $3 WHERE id = $4`
+    _, err := p.db.Exec(query, job.Title, job.Description, job.UpdatedAt, job.Id)
+    if err != nil {
+        return domain.Job{}, err
+    }
+    return job, nil
+}
+
+func (p PostgresFileUploadRepository) CreateTask(task domain.Task) (domain.Task, error) {
+    query := `INSERT INTO tasks (id, job_id, owner_id, title, description, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+    _, err := p.db.Exec(query, task.Id, task.JobID, task.OwnerID, task.Title, task.Description, task.Status, task.CreatedAt, task.UpdatedAt)
+    if err != nil {
+        return domain.Task{}, err
+    }
+    return task, nil
+}
+
+func (p PostgresFileUploadRepository) ListTasksByJob(jobID string) ([]domain.Task, error) {
+    rows, err := p.db.Query(`SELECT id, job_id, owner_id, title, description, status, created_at, updated_at FROM tasks WHERE job_id = $1 ORDER BY created_at DESC`, jobID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    tasks := []domain.Task{}
+    for rows.Next() {
+        var task domain.Task
+        if err := rows.Scan(&task.Id, &task.JobID, &task.OwnerID, &task.Title, &task.Description, &task.Status, &task.CreatedAt, &task.UpdatedAt); err != nil {
+            return nil, err
+        }
+        tasks = append(tasks, task)
+    }
+    if err := rows.Err(); err != nil {
+        return nil, err
+    }
+    return tasks, nil
+}
+
+func (p PostgresFileUploadRepository) GetTaskByID(id string) (domain.Task, error) {
+    var task domain.Task
+    row := p.db.QueryRow(`SELECT id, job_id, owner_id, title, description, status, created_at, updated_at FROM tasks WHERE id = $1`, id)
+    if err := row.Scan(&task.Id, &task.JobID, &task.OwnerID, &task.Title, &task.Description, &task.Status, &task.CreatedAt, &task.UpdatedAt); err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return domain.Task{}, fmt.Errorf("task not found")
+        }
+        return domain.Task{}, err
+    }
+    return task, nil
+}
+
+func (p PostgresFileUploadRepository) UpdateTask(task domain.Task) (domain.Task, error) {
+    query := `UPDATE tasks SET title = $1, description = $2, status = $3, updated_at = $4 WHERE id = $5`
+    _, err := p.db.Exec(query, task.Title, task.Description, task.Status, task.UpdatedAt, task.Id)
+    if err != nil {
+        return domain.Task{}, err
+    }
+    return task, nil
+}
+
+func (p PostgresFileUploadRepository) CreateTimeEntry(entry domain.TimeEntry) (domain.TimeEntry, error) {
+    query := `INSERT INTO time_entries (id, task_id, user_id, start_time, end_time, duration_minutes, note, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+    _, err := p.db.Exec(query, entry.Id, entry.TaskID, entry.UserID, entry.StartTime, entry.EndTime, entry.DurationMinutes, entry.Note, entry.CreatedAt)
+    if err != nil {
+        return domain.TimeEntry{}, err
+    }
+    return entry, nil
+}
+
+func (p PostgresFileUploadRepository) GetTimeEntryByID(id string) (domain.TimeEntry, error) {
+    var entry domain.TimeEntry
+    row := p.db.QueryRow(`SELECT id, task_id, user_id, start_time, end_time, duration_minutes, note, created_at FROM time_entries WHERE id = $1`, id)
+    if err := row.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return domain.TimeEntry{}, fmt.Errorf("time entry not found")
+        }
+        return domain.TimeEntry{}, err
+    }
+    return entry, nil
+}
+
+func (p PostgresFileUploadRepository) GetActiveTimeEntry(taskID, userID string) (domain.TimeEntry, error) {
+    var entry domain.TimeEntry
+    row := p.db.QueryRow(`SELECT id, task_id, user_id, start_time, end_time, duration_minutes, note, created_at FROM time_entries WHERE task_id = $1 AND user_id = $2 AND end_time IS NULL ORDER BY start_time DESC LIMIT 1`, taskID, userID)
+    if err := row.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return domain.TimeEntry{}, fmt.Errorf("active time entry not found")
+        }
+        return domain.TimeEntry{}, err
+    }
+    return entry, nil
+}
+
+func (p PostgresFileUploadRepository) UpdateTimeEntry(entry domain.TimeEntry) (domain.TimeEntry, error) {
+    query := `UPDATE time_entries SET start_time = $1, end_time = $2, duration_minutes = $3, note = $4 WHERE id = $5`
+    _, err := p.db.Exec(query, entry.StartTime, entry.EndTime, entry.DurationMinutes, entry.Note, entry.Id)
+    if err != nil {
+        return domain.TimeEntry{}, err
+    }
+    return entry, nil
+}
+
+func (p PostgresFileUploadRepository) ListTimeEntriesByTask(taskID string) ([]domain.TimeEntry, error) {
+    rows, err := p.db.Query(`SELECT id, task_id, user_id, start_time, end_time, duration_minutes, note, created_at FROM time_entries WHERE task_id = $1 ORDER BY start_time DESC`, taskID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    entries := []domain.TimeEntry{}
+    for rows.Next() {
+        var entry domain.TimeEntry
+        if err := rows.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
+            return nil, err
+        }
+        entries = append(entries, entry)
+    }
+    if err := rows.Err(); err != nil {
+        return nil, err
+    }
+    return entries, nil
+}
+
+func (p PostgresFileUploadRepository) ListTimeEntriesByUser(userID string) ([]domain.TimeEntry, error) {
+    rows, err := p.db.Query(`SELECT id, task_id, user_id, start_time, end_time, duration_minutes, note, created_at FROM time_entries WHERE user_id = $1 ORDER BY start_time DESC`, userID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    entries := []domain.TimeEntry{}
+    for rows.Next() {
+        var entry domain.TimeEntry
+        if err := rows.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
+            return nil, err
+        }
+        entries = append(entries, entry)
+    }
+    if err := rows.Err(); err != nil {
+        return nil, err
+    }
+    return entries, nil
+}
+
+func (p PostgresFileUploadRepository) CreateEnergyAudit(audit domain.EnergyAudit) (domain.EnergyAudit, error) {
+    query := `INSERT INTO energy_audits (id, task_id, job_id, user_id, easy, hard, fun, not_fun, efficiency_rating, notes, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+    _, err := p.db.Exec(query, audit.Id, audit.TaskID, audit.JobID, audit.UserID, audit.Easy, audit.Hard, audit.Fun, audit.NotFun, audit.EfficiencyRating, audit.Notes, audit.CreatedAt)
+    if err != nil {
+        return domain.EnergyAudit{}, err
+    }
+    return audit, nil
+}
+
+func (p PostgresFileUploadRepository) ListEnergyAuditsByTask(taskID string) ([]domain.EnergyAudit, error) {
+    rows, err := p.db.Query(`SELECT id, task_id, job_id, user_id, easy, hard, fun, not_fun, efficiency_rating, notes, created_at FROM energy_audits WHERE task_id = $1 ORDER BY created_at DESC`, taskID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    audits := []domain.EnergyAudit{}
+    for rows.Next() {
+        var audit domain.EnergyAudit
+        if err := rows.Scan(&audit.Id, &audit.TaskID, &audit.JobID, &audit.UserID, &audit.Easy, &audit.Hard, &audit.Fun, &audit.NotFun, &audit.EfficiencyRating, &audit.Notes, &audit.CreatedAt); err != nil {
+            return nil, err
+        }
+        audits = append(audits, audit)
+    }
+    if err := rows.Err(); err != nil {
+        return nil, err
+    }
+    return audits, nil
+}
+
+func (p PostgresFileUploadRepository) UploadImage(image domain.ImageUpload, imageData []byte) (domain.ImageUpload, error) {
+    query := `INSERT INTO image_uploads (id, job_id, task_id, owner_id, original_name, extension, upload_uuid, photo_type, size_bytes, mime_type, created_at, data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+    _, err := p.db.Exec(query, image.Id, image.JobID, image.TaskID, image.OwnerID, image.OriginalName, image.Extension, image.UploadUUID, image.PhotoType, image.SizeBytes, image.MimeType, image.CreatedAt, imageData)
+    if err != nil {
+        return domain.ImageUpload{}, err
+    }
+    return image, nil
+}
+
+func (p PostgresFileUploadRepository) ListImageUploadsByTask(taskID string) ([]domain.ImageUpload, error) {
+    rows, err := p.db.Query(`SELECT id, job_id, task_id, owner_id, original_name, extension, upload_uuid, photo_type, size_bytes, mime_type, created_at FROM image_uploads WHERE task_id = $1 ORDER BY created_at DESC`, taskID)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    uploads := []domain.ImageUpload{}
+    for rows.Next() {
+        var upload domain.ImageUpload
+        if err := rows.Scan(&upload.Id, &upload.JobID, &upload.TaskID, &upload.OwnerID, &upload.OriginalName, &upload.Extension, &upload.UploadUUID, &upload.PhotoType, &upload.SizeBytes, &upload.MimeType, &upload.CreatedAt); err != nil {
+            return nil, err
+        }
+        uploads = append(uploads, upload)
+    }
+    if err := rows.Err(); err != nil {
+        return nil, err
+    }
+    return uploads, nil
+}
+
+func (p PostgresFileUploadRepository) GetImageUploadByID(id string) (domain.ImageUpload, error) {
+    var upload domain.ImageUpload
+    row := p.db.QueryRow(`SELECT id, job_id, task_id, owner_id, original_name, extension, upload_uuid, photo_type, size_bytes, mime_type, created_at FROM image_uploads WHERE id = $1`, id)
+    if err := row.Scan(&upload.Id, &upload.JobID, &upload.TaskID, &upload.OwnerID, &upload.OriginalName, &upload.Extension, &upload.UploadUUID, &upload.PhotoType, &upload.SizeBytes, &upload.MimeType, &upload.CreatedAt); err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return domain.ImageUpload{}, fmt.Errorf("image upload not found")
+        }
+        return domain.ImageUpload{}, err
+    }
+    return upload, nil
+}
+
+func (p PostgresFileUploadRepository) GetImageUploadDataByID(id string) ([]byte, error) {
+    var data []byte
+    row := p.db.QueryRow(`SELECT data FROM image_uploads WHERE id = $1`, id)
+    if err := row.Scan(&data); err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return nil, fmt.Errorf("image upload not found")
+        }
+        return nil, err
+    }
+    return data, nil
 }
 
 var _ domain.FileUploadRepository = PostgresFileUploadRepository{}

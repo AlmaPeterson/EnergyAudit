@@ -42,9 +42,10 @@ func (s SharesController) Routes() []httpserver.Route {
 }
 
 type createShareRequest struct {
-	FileID      string `json:"fileId"`
-	GranteeEmail string `json:"granteeEmail"` // Changed from granteeId to email
-	AccessLevel string `json:"accessLevel"`
+	ResourceType string `json:"resourceType"`
+	ResourceID   string `json:"resourceId"`
+	GranteeEmail string `json:"granteeEmail"`
+	AccessLevel  string `json:"accessLevel"`
 }
 
 func (s SharesController) HandleCreateShare(w http.ResponseWriter, r *http.Request) {
@@ -59,8 +60,13 @@ func (s SharesController) HandleCreateShare(w http.ResponseWriter, r *http.Reque
 		s.errorHandler.HandleError(http.StatusBadRequest, w, err)
 		return
 	}
-	if req.FileID == "" || req.GranteeEmail == "" || req.AccessLevel == "" {
-		s.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("fileId, granteeEmail and accessLevel are required"))
+	if req.ResourceType == "" || req.ResourceID == "" || req.GranteeEmail == "" || req.AccessLevel == "" {
+		s.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("resourceType, resourceId, granteeEmail and accessLevel are required"))
+		return
+	}
+
+	if req.ResourceType != "file" && req.ResourceType != "folder" {
+		s.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("resourceType must be 'file' or 'folder'"))
 		return
 	}
 
@@ -75,25 +81,38 @@ func (s SharesController) HandleCreateShare(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// only owner can create shares
-	// repo must provide GetFileUploadByID; domain.FileUploadRepository has that
-	file, err := s.repo.GetFileUploadByID(req.FileID)
-	if err != nil {
-		s.errorHandler.HandleError(http.StatusNotFound, w, err)
-		return
-	}
-	if file.OwnerID != current.Id {
-		s.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("only owner can share"))
-		return
+	var ownerResourceID string
+	if req.ResourceType == "file" {
+		file, err := s.repo.GetFileUploadByID(req.ResourceID)
+		if err != nil {
+			s.errorHandler.HandleError(http.StatusNotFound, w, err)
+			return
+		}
+		if file.OwnerID != current.Id {
+			s.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("only owner can share"))
+			return
+		}
+		ownerResourceID = file.Id
+	} else {
+		folder, err := s.repo.GetFolderByID(req.ResourceID)
+		if err != nil {
+			s.errorHandler.HandleError(http.StatusNotFound, w, err)
+			return
+		}
+		if folder.OwnerID != current.Id {
+			s.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("only owner can share"))
+			return
+		}
+		ownerResourceID = folder.Id
 	}
 
 	// Prevent sharing with self
 	if granteeUser.Id == current.Id {
-		s.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("cannot share file with yourself"))
+		s.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("cannot share resource with yourself"))
 		return
 	}
 
-	fs, err := domain.NewFileShare(req.FileID, current.Id, granteeUser.Id, strings.ToLower(req.AccessLevel))
+	fs, err := domain.NewFileShare(req.ResourceType, ownerResourceID, current.Id, granteeUser.Id, strings.ToLower(req.AccessLevel))
 	if err != nil {
 		s.errorHandler.HandleError(http.StatusBadRequest, w, err)
 		return

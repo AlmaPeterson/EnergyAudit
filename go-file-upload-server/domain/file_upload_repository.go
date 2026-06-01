@@ -12,4 +12,7 @@ type FileUploadRepository interface {
 	ListFoldersForUser(userID string, parentID *string) ([]Folder, error)
 	GetFolderByID(id string) (Folder, error)
 	DeleteFolder(id string) error
+
+	UserHasFolderAccess(folderID string, userID string) (bool, error)
+	ListFolderContents(userID string, folderID string) ([]Folder, []FileUpload, error)
 }

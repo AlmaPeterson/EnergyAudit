@@ -2,13 +2,16 @@
 // Main App Controller
 // ============================================================================
 
-class FileUploadApp {
+class EnergyAuditApp {
     constructor() {
         this.currentUser = null;
-        this.files = [];
-        this.folders = [];
-        this.currentFolder = null;
-        this.shares = [];
+        this.currentJob = null;
+        this.currentTask = null;
+        this.jobs = [];
+        this.tasks = [];
+        this.timeEntries = [];
+        this.audits = [];
+        this.images = [];
         this.init();
     }
 
@@ -18,7 +21,6 @@ class FileUploadApp {
     }
 
     setupEventListeners() {
-        // Auth events
         document.getElementById('showSignup').addEventListener('click', (e) => {
             e.preventDefault();
             this.switchAuthForm('signup');
@@ -33,6 +35,15 @@ class FileUploadApp {
         document.getElementById('signupBtn').addEventListener('click', () => this.handleSignup());
         document.getElementById('logoutBtn').addEventListener('click', () => this.handleLogout());
 
+        document.getElementById('createJobBtn').addEventListener('click', () => this.handleCreateJob());
+        document.getElementById('refreshJobsBtn').addEventListener('click', () => this.loadJobs());
+        document.getElementById('createTaskBtn').addEventListener('click', () => this.handleCreateTask());
+        document.getElementById('refreshTasksBtn').addEventListener('click', () => this.loadTasks());
+        document.getElementById('createTimeEntryBtn').addEventListener('click', () => this.handleCreateTimeEntry());
+        document.getElementById('stopTimeEntryBtn').addEventListener('click', () => this.handleStopActiveTimeEntry());
+        document.getElementById('createAuditBtn').addEventListener('click', () => this.handleCreateAudit());
+        document.getElementById('uploadImageBtn').addEventListener('click', () => this.handleUploadImage());
+
         ['loginEmail', 'loginPassword'].forEach((id) => {
             const input = document.getElementById(id);
             if (!input) return;
@@ -43,52 +54,17 @@ class FileUploadApp {
                 }
             });
         });
-
-        // File upload events
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-
-        uploadArea.addEventListener('click', () => fileInput.click());
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('drag-over');
-        });
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('drag-over');
-        });
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('drag-over');
-            if (e.dataTransfer.files.length) {
-                this.handleFileSelect(e.dataTransfer.files[0]);
-            }
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length) {
-                this.handleFileSelect(e.target.files[0]);
-            }
-        });
-
-        // Refresh events
-        document.getElementById('refreshFilesBtn').addEventListener('click', () => this.loadFiles());
-        document.getElementById('refreshFoldersBtn').addEventListener('click', () => this.loadFolders());
-        document.getElementById('goRootBtn').addEventListener('click', () => this.handleNavigateRoot());
-        document.getElementById('createFolderBtn').addEventListener('click', () => this.handleCreateFolder());
-
-        // Share events
-        document.getElementById('createShareBtn').addEventListener('click', () => this.handleCreateShare());
     }
 
     switchAuthForm(form) {
         document.getElementById('loginForm').classList.toggle('active', form === 'login');
         document.getElementById('signupForm').classList.toggle('active', form === 'signup');
-        document.getElementById('loginError').textContent = '';
-        document.getElementById('signupError').textContent = '';
+        UIManager.setError('loginError', '');
+        UIManager.setError('signupError', '');
     }
 
     async handleLogin() {
-        const email = document.getElementById('loginEmail').value;
+        const email = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value;
 
         if (!email || !password) {
@@ -104,7 +80,7 @@ class FileUploadApp {
                 email: AuthManager.getUserEmail() || email,
             };
             UIManager.showAppSection();
-            await this.loadAppData();
+            await this.loadDashboard();
             UIManager.showToast('Logged in successfully');
         } catch (error) {
             UIManager.setError('loginError', error.message);
@@ -129,7 +105,7 @@ class FileUploadApp {
 
         try {
             await APIClient.signup(firstName, lastName, email, password);
-            UIManager.showToast('Account created successfully! Please log in.');
+            UIManager.showToast('Account created successfully. Please log in.');
             this.switchAuthForm('login');
             document.getElementById('loginEmail').value = email;
             document.getElementById('signupFirstName').value = '';
@@ -144,254 +120,409 @@ class FileUploadApp {
     handleLogout() {
         AuthManager.clearToken();
         this.currentUser = null;
-        this.files = [];
-        this.shares = [];
+        this.currentJob = null;
+        this.currentTask = null;
         UIManager.showAuthSection();
         this.switchAuthForm('login');
-        document.getElementById('loginEmail').value = '';
-        document.getElementById('loginPassword').value = '';
     }
 
-    async handleFileSelect(file) {
-        if (!file) return;
+    async loadDashboard() {
+        document.getElementById('userDisplay').textContent = `Logged in as ${this.currentUser?.email || 'User'}`;
+        await this.loadJobs();
+        this.clearJobSelection();
+        this.clearTaskSelection();
+    }
 
-        // Validate file size (100MB)
-        const maxSize = 100 * 1024 * 1024;
-        if (file.size > maxSize) {
-            UIManager.setError('uploadError', 'File size exceeds 100MB limit');
-            return;
-        }
-
-        UIManager.setError('uploadError', '');
-        UIManager.setLoading('uploadProgress', true);
-
+    async loadJobs() {
         try {
-            await APIClient.uploadFile(file, this.currentFolder?.id || null);
-            UIManager.showToast('File uploaded successfully');
-            document.getElementById('fileInput').value = '';
-            await this.loadFiles();
-            await this.loadShareOptions();
-        } catch (error) {
-            UIManager.setError('uploadError', error.message);
-        } finally {
-            UIManager.setLoading('uploadProgress', false);
-        }
-    }
-
-    async loadAppData() {
-        document.getElementById('userDisplay').textContent = 
-            `Logged in as ${this.currentUser?.email || 'User'}`;
-        
-        await this.loadFolders();
-        await this.loadFiles();
-        await this.loadShares();
-        await this.loadShareOptions();
-    }
-
-    async loadFiles() {
-        UIManager.setLoading('filesLoading', true);
-        document.getElementById('filesList').classList.add('hidden');
-        document.getElementById('filesEmpty').classList.add('hidden');
-
-        try {
-            this.files = await APIClient.getUploads(this.currentFolder?.id || null) || [];
-            this.shares = await APIClient.getShares() || [];
-
-            const sharedItems = this.shares
-                .filter(share => share.granteeId === this.currentUser?.id)
-                .map(share => ({
-                    id: share.fileId,
-                    fileName: share.fileName,
-                    shared: true,
-                    sharedBy: share.ownerEmail,
-                    accessLevel: share.accessLevel,
-                    createdAt: share.createdAt,
-                }));
-
-            const allFiles = [
-                ...this.files.map(file => ({
-                    id: file.id,
-                    fileName: `${file.originalName}.${file.extension}`,
-                    uploadedAt: file.uploadedAt,
-                    shared: false,
-                })),
-                ...sharedItems,
-            ];
-
-            if (allFiles.length === 0) {
-                document.getElementById('filesEmpty').classList.remove('hidden');
-            } else {
-                this.renderFilesList(allFiles);
-                document.getElementById('filesList').classList.remove('hidden');
-            }
-        } catch (error) {
-            UIManager.showToast('Failed to load files', 'error');
-        } finally {
-            UIManager.setLoading('filesLoading', false);
-        }
-    }
-
-    async loadFolders() {
-        UIManager.setLoading('foldersLoading', true);
-        document.getElementById('foldersList').classList.add('hidden');
-        document.getElementById('foldersEmpty').classList.add('hidden');
-
-        try {
-            this.folders = await APIClient.getFolders(this.currentFolder?.id || null) || [];
-            this.renderCurrentFolderBreadcrumb();
-
-            if (this.folders.length === 0) {
-                document.getElementById('foldersEmpty').classList.remove('hidden');
-            } else {
-                this.renderFoldersList();
-                document.getElementById('foldersList').classList.remove('hidden');
-            }
-        } catch (error) {
-            UIManager.showToast('Failed to load folders', 'error');
-        } finally {
-            UIManager.setLoading('foldersLoading', false);
-        }
-    }
-
-    renderCurrentFolderBreadcrumb() {
-        const pathElement = document.getElementById('folderCurrentPath');
-        const name = this.currentFolder ? this.currentFolder.name : 'Root';
-        pathElement.textContent = `Current folder: ${name}`;
-        const goRootBtn = document.getElementById('goRootBtn');
-        goRootBtn.classList.toggle('hidden', !this.currentFolder);
-    }
-
-    renderFoldersList() {
-        const list = document.getElementById('foldersList');
-        list.innerHTML = '';
-
-        this.folders.forEach(folder => {
-            const item = document.createElement('div');
-            item.className = 'folder-item';
-            item.innerHTML = `
-                <div class="folder-info">
-                    <div class="folder-name">${UIManager.escapeHtml(folder.name)}</div>
-                </div>
-                <div class="folder-actions">
-                    <button class="btn btn-small" data-folder-open-id="${folder.id}">Open</button>
-                    <button class="btn btn-small btn-danger" data-folder-delete-id="${folder.id}">Delete</button>
-                </div>
-            `;
-
-            item.querySelector('[data-folder-open-id]').addEventListener('click', (e) => {
-                const folderId = e.target.dataset.folderOpenId;
-                const folder = this.folders.find(f => f.id === folderId);
-                if (folder) {
-                    this.handleOpenFolder(folder);
-                }
-            });
-
-            item.querySelector('[data-folder-delete-id]').addEventListener('click', (e) => {
-                const folderId = e.target.dataset.folderDeleteId;
-                this.handleDeleteFolder(folderId);
-            });
-
-            list.appendChild(item);
-        });
-    }
-
-    async handleCreateFolder() {
-        const folderName = document.getElementById('folderNameInput').value.trim();
-        if (!folderName) {
-            UIManager.showToast('Please enter a folder name', 'error');
-            return;
-        }
-
-        try {
-            await APIClient.createFolder(folderName, this.currentFolder?.id || null);
-            UIManager.showToast('Folder created successfully');
-            document.getElementById('folderNameInput').value = '';
-            await this.loadFolders();
+            this.jobs = await APIClient.getJobs() || [];
+            this.renderJobsList();
         } catch (error) {
             UIManager.showToast(error.message, 'error');
         }
     }
 
-    async handleOpenFolder(folder) {
-        this.currentFolder = folder;
-        await this.loadFolders();
-        await this.loadFiles();
-    }
-
-    async handleNavigateRoot() {
-        this.currentFolder = null;
-        await this.loadFolders();
-        await this.loadFiles();
-    }
-
-    async handleDeleteFolder(folderId) {
-        if (!confirm('Are you sure you want to delete this folder?')) return;
+    async loadTasks() {
+        if (!this.currentJob) {
+            this.tasks = [];
+            this.renderTasksList();
+            return;
+        }
 
         try {
-            await APIClient.deleteFolder(folderId);
-            UIManager.showToast('Folder deleted successfully');
-            await this.loadFolders();
+            this.tasks = await APIClient.listTasks(this.currentJob.id) || [];
+            this.renderTasksList();
         } catch (error) {
             UIManager.showToast(error.message, 'error');
         }
     }
 
-    renderFilesList(fileItems) {
-        const list = document.getElementById('filesList');
-        list.innerHTML = '';
+    async loadTimeEntries() {
+        if (!this.currentTask) {
+            this.timeEntries = [];
+            this.renderTimeEntries();
+            return;
+        }
 
-        fileItems.forEach(file => {
-            const fileName = UIManager.escapeHtml(file.fileName || 'Unknown');
-            const uploadDate = new Date(file.uploadedAt || file.createdAt).toLocaleString();
-            const metaText = file.shared
-                ? `Shared by ${UIManager.escapeHtml(file.sharedBy || 'Unknown')} · ${UIManager.escapeHtml(this.getAccessLabel(file.accessLevel))}`
-                : `Uploaded: ${uploadDate}`;
-            
-            const item = document.createElement('div');
-            item.className = 'file-item';
-            item.innerHTML = `
-                <div class="file-info">
-                    <div class="file-name">${fileName}</div>
-                    <div class="file-meta">
-                        ${metaText}
-                    </div>
-                </div>
-                <div class="file-actions">
-                    <button class="btn btn-small" data-download-id="${file.id}" data-file-name="${fileName}">
-                        Download
-                    </button>
-                    <button class="btn btn-small btn-danger" data-file-id="${file.id}">
-                        Delete
-                    </button>
-                </div>
-            `;
-
-            item.querySelector('[data-download-id]').addEventListener('click', (e) => {
-                const button = e.target;
-                this.handleDownloadFile(button.dataset.downloadId, button.dataset.fileName);
-            });
-            item.querySelector('[data-file-id]').addEventListener('click', (e) => {
-                this.handleDeleteFile(e.target.dataset.fileId);
-            });
-
-            list.appendChild(item);
-        });
-    }
-
-    getAccessLabel(accessLevel) {
-        switch (accessLevel) {
-            case 'write':
-                return 'View/Download and Share';
-            case 'delete':
-                return 'View/Download, Share, and Delete';
-            default:
-                return 'View/Download';
+        try {
+            this.timeEntries = await APIClient.listTimeEntries(this.currentTask.id) || [];
+            this.renderTimeEntries();
+        } catch (error) {
+            UIManager.showToast(error.message, 'error');
         }
     }
 
-    async handleDownloadFile(fileId, fileName) {
+    async loadAudits() {
+        if (!this.currentTask) {
+            this.audits = [];
+            this.renderAudits();
+            return;
+        }
+
+        UIManager.setLoading('auditStatus', true);
         try {
-            const blob = await APIClient.downloadUpload(fileId);
+            this.audits = await APIClient.listEnergyAudits(this.currentTask.id) || [];
+            this.renderAudits();
+        } catch (error) {
+            UIManager.showToast(error.message, 'error');
+        } finally {
+            UIManager.setLoading('auditStatus', false);
+        }
+    }
+
+    async loadImages() {
+        if (!this.currentTask) {
+            this.images = [];
+            this.renderImages();
+            return;
+        }
+
+        try {
+            this.images = await APIClient.listImages(this.currentTask.id) || [];
+            this.renderImages();
+        } catch (error) {
+            UIManager.showToast(error.message, 'error');
+        }
+    }
+
+    async handleCreateJob() {
+        const title = document.getElementById('jobTitleInput').value.trim();
+        const description = document.getElementById('jobDescriptionInput').value.trim();
+        UIManager.setError('jobError', '');
+
+        if (!title) {
+            UIManager.setError('jobError', 'Job title is required');
+            return;
+        }
+
+        try {
+            await APIClient.createJob(title, description);
+            UIManager.showToast('Job created successfully');
+            document.getElementById('jobTitleInput').value = '';
+            document.getElementById('jobDescriptionInput').value = '';
+            await this.loadJobs();
+        } catch (error) {
+            UIManager.setError('jobError', error.message);
+        }
+    }
+
+    async handleCreateTask() {
+        const title = document.getElementById('taskTitleInput').value.trim();
+        const description = document.getElementById('taskDescriptionInput').value.trim();
+        UIManager.setError('taskError', '');
+
+        if (!this.currentJob) {
+            UIManager.setError('taskError', 'Select a job before adding a task');
+            return;
+        }
+
+        if (!title) {
+            UIManager.setError('taskError', 'Task title is required');
+            return;
+        }
+
+        try {
+            await APIClient.createTask(this.currentJob.id, title, description);
+            UIManager.showToast('Task added successfully');
+            document.getElementById('taskTitleInput').value = '';
+            document.getElementById('taskDescriptionInput').value = '';
+            await this.loadTasks();
+        } catch (error) {
+            UIManager.setError('taskError', error.message);
+        }
+    }
+
+    async handleCreateTimeEntry() {
+        const start = document.getElementById('timeEntryStartInput').value;
+        const end = document.getElementById('timeEntryEndInput').value;
+        const note = document.getElementById('timeEntryNoteInput').value.trim();
+        UIManager.setError('timeEntryError', '');
+
+        if (!this.currentTask) {
+            UIManager.setError('timeEntryError', 'Select a task before logging time');
+            return;
+        }
+
+        if (!start) {
+            UIManager.setError('timeEntryError', 'Start time is required');
+            return;
+        }
+
+        try {
+            await APIClient.createTimeEntry(this.currentTask.id, start, end || null, note);
+            UIManager.showToast('Time entry saved');
+            document.getElementById('timeEntryStartInput').value = '';
+            document.getElementById('timeEntryEndInput').value = '';
+            document.getElementById('timeEntryNoteInput').value = '';
+            await this.loadTimeEntries();
+        } catch (error) {
+            UIManager.setError('timeEntryError', error.message);
+        }
+    }
+
+    async handleStopActiveTimeEntry() {
+        if (!this.currentTask) {
+            UIManager.showToast('Select a task before stopping a timer', 'error');
+            return;
+        }
+
+        const activeEntry = this.timeEntries.find((entry) => !entry.endTime);
+        if (!activeEntry) {
+            UIManager.showToast('No active timer found', 'error');
+            return;
+        }
+
+        try {
+            await APIClient.stopTimeEntry(activeEntry.id);
+            UIManager.showToast('Timer stopped');
+            await this.loadTimeEntries();
+        } catch (error) {
+            UIManager.showToast(error.message, 'error');
+        }
+    }
+
+    async handleCreateAudit() {
+        const easy = document.getElementById('auditEasy').checked;
+        const hard = document.getElementById('auditHard').checked;
+        const fun = document.getElementById('auditFun').checked;
+        const notFun = document.getElementById('auditNotFun').checked;
+        const efficiencyRating = parseInt(document.getElementById('auditEfficiencyRating').value, 10);
+        const notes = document.getElementById('auditNotes').value.trim();
+        UIManager.setError('auditError', '');
+
+        if (!this.currentTask || !this.currentJob) {
+            UIManager.setError('auditError', 'Select a job and task before saving an audit');
+            return;
+        }
+
+        if (Number.isNaN(efficiencyRating) || efficiencyRating < 1 || efficiencyRating > 10) {
+            UIManager.setError('auditError', 'Efficiency rating must be between 1 and 10');
+            return;
+        }
+
+        try {
+            await APIClient.createEnergyAudit(this.currentJob.id, this.currentTask.id, easy, hard, fun, notFun, efficiencyRating, notes);
+            UIManager.showToast('Audit saved');
+            document.getElementById('auditEasy').checked = false;
+            document.getElementById('auditHard').checked = false;
+            document.getElementById('auditFun').checked = false;
+            document.getElementById('auditNotFun').checked = false;
+            document.getElementById('auditEfficiencyRating').value = '';
+            document.getElementById('auditNotes').value = '';
+            await this.loadAudits();
+        } catch (error) {
+            UIManager.setError('auditError', error.message);
+        }
+    }
+
+    async handleUploadImage() {
+        const input = document.getElementById('imageUploadInput');
+        const photoType = document.getElementById('imagePhotoType').value;
+        UIManager.setError('imageError', '');
+
+        if (!this.currentTask) {
+            UIManager.setError('imageError', 'Select a task before uploading a photo');
+            return;
+        }
+
+        if (!input.files.length) {
+            UIManager.setError('imageError', 'Select an image to upload');
+            return;
+        }
+
+        const file = input.files[0];
+        try {
+            await APIClient.uploadImage(file, this.currentTask.id, this.currentJob?.id, photoType);
+            UIManager.showToast('Photo uploaded successfully');
+            input.value = '';
+            await this.loadImages();
+        } catch (error) {
+            UIManager.setError('imageError', error.message);
+        }
+    }
+
+    async renderJobsList() {
+        const list = document.getElementById('jobsList');
+        list.innerHTML = '';
+
+        if (this.jobs.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'No jobs yet. Create one to get started.';
+            list.appendChild(empty);
+            return;
+        }
+
+        this.jobs.forEach((job) => {
+            const card = document.createElement('div');
+            card.className = 'list-card';
+            card.innerHTML = `
+                <h3>${UIManager.escapeHtml(job.title)}</h3>
+                <p>${UIManager.escapeHtml(job.description || 'No description added')}</p>
+                <button class="btn btn-small" data-job-id="${job.id}">${this.currentJob?.id === job.id ? 'Selected' : 'Select'}</button>
+            `;
+
+            card.querySelector('button').addEventListener('click', () => this.selectJob(job));
+            list.appendChild(card);
+        });
+    }
+
+    async renderTasksList() {
+        const list = document.getElementById('tasksList');
+        list.innerHTML = '';
+
+        if (!this.currentJob) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'Choose a job to display tasks.';
+            list.appendChild(empty);
+            return;
+        }
+
+        if (this.tasks.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'No tasks for this job yet.';
+            list.appendChild(empty);
+            return;
+        }
+
+        this.tasks.forEach((task) => {
+            const card = document.createElement('div');
+            card.className = 'list-card';
+            card.innerHTML = `
+                <h3>${UIManager.escapeHtml(task.title)}</h3>
+                <p>${UIManager.escapeHtml(task.description || 'No description added')}</p>
+                <button class="btn btn-small" data-task-id="${task.id}">${this.currentTask?.id === task.id ? 'Selected' : 'Select'}</button>
+            `;
+
+            card.querySelector('button').addEventListener('click', () => this.selectTask(task));
+            list.appendChild(card);
+        });
+    }
+
+    renderTimeEntries() {
+        const list = document.getElementById('timeEntriesList');
+        list.innerHTML = '';
+
+        if (!this.currentTask) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'Select a task to see time entries.';
+            list.appendChild(empty);
+            return;
+        }
+
+        if (this.timeEntries.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'No entries logged yet.';
+            list.appendChild(empty);
+            return;
+        }
+
+        this.timeEntries.forEach((entry) => {
+            const card = document.createElement('div');
+            card.className = 'list-card';
+            card.innerHTML = `
+                <h3>${entry.note ? UIManager.escapeHtml(entry.note) : 'Time entry'}</h3>
+                <p>${UIManager.escapeHtml(new Date(entry.startTime).toLocaleString())} - ${entry.endTime ? UIManager.escapeHtml(new Date(entry.endTime).toLocaleString()) : 'In progress'}</p>
+            `;
+            list.appendChild(card);
+        });
+    }
+
+    renderAudits() {
+        const list = document.getElementById('auditList');
+        list.innerHTML = '';
+
+        if (!this.currentTask) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'Select a task to show audit status.';
+            list.appendChild(empty);
+            return;
+        }
+
+        if (this.audits.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'No audits have been logged for this task yet.';
+            list.appendChild(empty);
+            return;
+        }
+
+        this.audits.forEach((audit) => {
+            const card = document.createElement('div');
+            card.className = 'list-card';
+            card.innerHTML = `
+                <h3>Audit at ${UIManager.escapeHtml(new Date(audit.createdAt).toLocaleString())}</h3>
+                <p>Easy: ${audit.easy ? 'Yes' : 'No'} · Hard: ${audit.hard ? 'Yes' : 'No'} · Fun: ${audit.fun ? 'Yes' : 'No'} · Not Fun: ${audit.notFun ? 'Yes' : 'No'}</p>
+                <p>Efficiency: ${UIManager.escapeHtml(String(audit.efficiencyRating))}</p>
+                <p>${UIManager.escapeHtml(audit.notes || 'No notes')}</p>
+            `;
+            list.appendChild(card);
+        });
+    }
+
+    renderImages() {
+        const list = document.getElementById('imagesList');
+        list.innerHTML = '';
+
+        if (!this.currentTask) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'Select a task to view uploaded photos.';
+            list.appendChild(empty);
+            return;
+        }
+
+        if (this.images.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'No photos uploaded yet.';
+            list.appendChild(empty);
+            return;
+        }
+
+        this.images.forEach((image) => {
+            const card = document.createElement('div');
+            card.className = 'list-card';
+            const createdAt = new Date(image.createdAt).toLocaleString();
+            card.innerHTML = `
+                <h3>${UIManager.escapeHtml(image.photoType || 'Photo')}</h3>
+                <p>${UIManager.escapeHtml(image.originalName || image.fileName || 'Uploaded image')}</p>
+                <p>${UIManager.escapeHtml(createdAt)}</p>
+                <button class="btn btn-small" data-image-id="${image.id}">Download</button>
+            `;
+            card.querySelector('button').addEventListener('click', () => this.downloadImage(image.id, image.originalName || 'photo')); 
+            list.appendChild(card);
+        });
+    }
+
+    async downloadImage(imageId, fileName) {
+        try {
+            const blob = await APIClient.downloadImage(imageId);
             const url = URL.createObjectURL(blob);
             const anchor = document.createElement('a');
             anchor.href = url;
@@ -405,144 +536,45 @@ class FileUploadApp {
         }
     }
 
-    async handleDeleteFile(fileId) {
-        if (!confirm('Are you sure you want to delete this file?')) return;
-
-        try {
-            await APIClient.deleteUpload(fileId);
-            UIManager.showToast('File deleted successfully');
-            await this.loadFiles();
-            await this.loadShareOptions();
-        } catch (error) {
-            UIManager.showToast(error.message, 'error');
-        }
+    async selectJob(job) {
+        this.currentJob = job;
+        document.getElementById('selectedJobTitle').textContent = `Selected Job: ${job.title}`;
+        await this.loadTasks();
+        this.clearTaskSelection();
     }
 
-    async loadShareOptions() {
-        const select = document.getElementById('shareFileSelect');
-        select.innerHTML = '<option value="">Choose a file...</option>';
-
-        this.files.forEach(file => {
-            const fileName = `${file.originalName}.${file.extension}`;
-            const option = document.createElement('option');
-            option.value = file.id;
-            option.textContent = fileName;
-            select.appendChild(option);
-        });
+    async selectTask(task) {
+        this.currentTask = task;
+        document.getElementById('selectedTaskTitle').textContent = `Selected Task: ${task.title}`;
+        await Promise.all([this.loadTimeEntries(), this.loadAudits(), this.loadImages()]);
     }
 
-    async handleCreateShare() {
-        const fileId = document.getElementById('shareFileSelect').value;
-        const granteeEmail = document.getElementById('shareGranteeId').value.trim();
-        const accessLevel = document.getElementById('shareAccessLevel').value;
-
-        UIManager.setError('shareError', '');
-
-        if (!fileId || !granteeEmail) {
-            UIManager.setError('shareError', 'Please select a file and enter recipient email');
-            return;
-        }
-
-        try {
-            await APIClient.createShare(fileId, granteeEmail, accessLevel);
-            UIManager.showToast('File shared successfully');
-            document.getElementById('shareFileSelect').value = '';
-            document.getElementById('shareGranteeId').value = '';
-            await this.loadShares();
-        } catch (error) {
-            UIManager.setError('shareError', error.message);
-        }
+    clearJobSelection() {
+        this.currentJob = null;
+        document.getElementById('selectedJobTitle').textContent = 'Select a job to manage tasks.';
+        this.tasks = [];
+        this.renderTasksList();
     }
 
-    async loadShares() {
-        UIManager.setLoading('sharesLoading', true);
-        document.getElementById('sharesList').classList.add('hidden');
-        document.getElementById('sharesEmpty').classList.add('hidden');
-
-        try {
-            this.shares = await APIClient.getShares() || [];
-            
-            if (this.shares.length === 0) {
-                document.getElementById('sharesEmpty').classList.remove('hidden');
-            } else {
-                this.renderSharesList();
-                document.getElementById('sharesList').classList.remove('hidden');
-            }
-        } catch (error) {
-            UIManager.showToast('Failed to load shares', 'error');
-        } finally {
-            UIManager.setLoading('sharesLoading', false);
-        }
-    }
-
-    renderSharesList() {
-        const list = document.getElementById('sharesList');
-        list.innerHTML = '';
-
-        if (this.shares.length === 0) return;
-
-        const table = document.createElement('table');
-        table.className = 'shares-table-content';
-        table.innerHTML = `
-            <thead>
-                <tr>
-                    <th>File</th>
-                    <th>Shared With / By</th>
-                    <th>Access Level</th>
-                    <th>Created</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        `;
-
-        const tbody = table.querySelector('tbody');
-        this.shares.forEach(share => {
-            const createdDate = new Date(share.createdAt).toLocaleString();
-            const sharedLabel = (share.ownerId === this.currentUser?.id)
-                ? share.granteeEmail || 'Unknown'
-                : share.ownerEmail || 'Unknown';
-            const accessLabel = this.getAccessLabel(share.accessLevel);
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${UIManager.escapeHtml(share.fileName || 'Unknown')}</td>
-                <td>${UIManager.escapeHtml(sharedLabel)}</td>
-                <td>${UIManager.escapeHtml(accessLabel)}</td>
-                <td>${createdDate}</td>
-                <td>
-                    <button class="btn btn-small btn-danger" data-share-id="${share.id}">
-                        Remove
-                    </button>
-                </td>
-            `;
-
-            row.querySelector('[data-share-id]').addEventListener('click', (e) => {
-                this.handleDeleteShare(e.target.dataset.shareId);
-            });
-
-            tbody.appendChild(row);
-        });
-
-        list.appendChild(table);
-    }
-
-    async handleDeleteShare(shareId) {
-        if (!confirm('Are you sure you want to remove this share?')) return;
-
-        try {
-            await APIClient.deleteShare(shareId);
-            UIManager.showToast('Share removed successfully');
-            await this.loadShares();
-        } catch (error) {
-            UIManager.showToast(error.message, 'error');
-        }
+    clearTaskSelection() {
+        this.currentTask = null;
+        document.getElementById('selectedTaskTitle').textContent = 'Select a task to log time.';
+        this.timeEntries = [];
+        this.audits = [];
+        this.images = [];
+        this.renderTimeEntries();
+        this.renderAudits();
+        this.renderImages();
     }
 
     checkAuthStatus() {
         if (AuthManager.isAuthenticated()) {
-            this.currentUser = { email: 'User' };
+            this.currentUser = {
+                email: AuthManager.getUserEmail() || 'User',
+                id: AuthManager.getUserId(),
+            };
             UIManager.showAppSection();
-            this.loadAppData();
+            this.loadDashboard();
         } else {
             UIManager.showAuthSection();
         }
@@ -554,5 +586,5 @@ class FileUploadApp {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    new FileUploadApp();
+    new EnergyAuditApp();
 });

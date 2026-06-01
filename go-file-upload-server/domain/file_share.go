@@ -9,8 +9,9 @@ import (
 
 type FileShare struct {
     Id           string    `json:"id"`
-    FileID       string    `json:"fileId"`
-    FileName     string    `json:"fileName,omitempty"`     // Populated from file_uploads on retrieval
+    ResourceType string    `json:"resourceType"` // file or folder
+    ResourceID   string    `json:"resourceId"`
+    ResourceName string    `json:"resourceName,omitempty"`
     OwnerID      string    `json:"ownerId"`
     OwnerEmail   string    `json:"ownerEmail,omitempty"`
     GranteeID    string    `json:"granteeId"`
@@ -19,9 +20,12 @@ type FileShare struct {
     CreatedAt    time.Time `json:"createdAt"`
 }
 
-func NewFileShare(fileID, ownerID, granteeID, accessLevel string) (*FileShare, error) {
-    if fileID == "" {
-        return nil, errors.New("file ID cannot be empty")
+func NewFileShare(resourceType, resourceID, ownerID, granteeID, accessLevel string) (*FileShare, error) {
+    if resourceType != "file" && resourceType != "folder" {
+        return nil, errors.New("resource type must be either 'file' or 'folder'")
+    }
+    if resourceID == "" {
+        return nil, errors.New("resource ID cannot be empty")
     }
     if ownerID == "" {
         return nil, errors.New("owner ID cannot be empty")
@@ -34,11 +38,12 @@ func NewFileShare(fileID, ownerID, granteeID, accessLevel string) (*FileShare, e
     }
 
     return &FileShare{
-        Id:          uuid.NewString(),
-        FileID:      fileID,
-        OwnerID:     ownerID,
-        GranteeID:   granteeID,
-        AccessLevel: accessLevel,
-        CreatedAt:   time.Now(),
+        Id:           uuid.NewString(),
+        ResourceType: resourceType,
+        ResourceID:   resourceID,
+        OwnerID:      ownerID,
+        GranteeID:    granteeID,
+        AccessLevel:  accessLevel,
+        CreatedAt:    time.Now(),
     }, nil
 }
