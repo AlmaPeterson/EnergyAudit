@@ -43,7 +43,6 @@ func (p PostgresFileUploadRepository) ListFileSharesForFile(fileID string) ([]do
 }
 
 func (p PostgresFileUploadRepository) ListFileSharesForUser(userID string) ([]domain.FileShare, error) {
-	// JOIN with users table to get grantee email and file_uploads to get file name
 	query := `
 		SELECT 
 			fs.id, 
@@ -52,11 +51,13 @@ func (p PostgresFileUploadRepository) ListFileSharesForUser(userID string) ([]do
 			fs.grantee_id, 
 			fs.access_level, 
 			fs.created_at,
-			COALESCE(u.email, 'Unknown') AS grantee_email,
+			COALESCE(owner.email, 'Unknown') AS owner_email,
+			COALESCE(grantee.email, 'Unknown') AS grantee_email,
 			COALESCE(fu.original_name, fu.file_name, 'Unknown') AS file_name,
 			COALESCE(fu.file_extension, '') AS file_extension
 		FROM file_shares fs
-		LEFT JOIN users u ON fs.grantee_id = u.id
+		LEFT JOIN users owner ON fs.owner_id = owner.id
+		LEFT JOIN users grantee ON fs.grantee_id = grantee.id
 		LEFT JOIN file_uploads fu ON fs.file_id = fu.id
 		WHERE fs.owner_id = $1 OR fs.grantee_id = $1 
 		ORDER BY fs.created_at DESC
@@ -71,15 +72,16 @@ func (p PostgresFileUploadRepository) ListFileSharesForUser(userID string) ([]do
 	for rows.Next() {
 		var id int64
 		var s domain.FileShare
+		var ownerEmail string
 		var granteeEmail string
 		var fileName string
 		var fileExtension string
-		if err := rows.Scan(&id, &s.FileID, &s.OwnerID, &s.GranteeID, &s.AccessLevel, &s.CreatedAt, &granteeEmail, &fileName, &fileExtension); err != nil {
+		if err := rows.Scan(&id, &s.FileID, &s.OwnerID, &s.GranteeID, &s.AccessLevel, &s.CreatedAt, &ownerEmail, &granteeEmail, &fileName, &fileExtension); err != nil {
 			return nil, err
 		}
 		s.Id = fmt.Sprintf("%d", id)
+		s.OwnerEmail = ownerEmail
 		s.GranteeEmail = granteeEmail
-		// Reconstruct full file name with extension
 		if fileExtension != "" {
 			s.FileName = fileName + "." + fileExtension
 		} else {

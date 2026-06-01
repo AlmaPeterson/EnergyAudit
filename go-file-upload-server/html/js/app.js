@@ -31,6 +31,17 @@ class FileUploadApp {
         document.getElementById('signupBtn').addEventListener('click', () => this.handleSignup());
         document.getElementById('logoutBtn').addEventListener('click', () => this.handleLogout());
 
+        ['loginEmail', 'loginPassword'].forEach((id) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.handleLogin();
+                }
+            });
+        });
+
         // File upload events
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -83,9 +94,12 @@ class FileUploadApp {
         try {
             const response = await APIClient.login(email, password);
             AuthManager.setToken(response.token);
-            this.currentUser = { email };
+            this.currentUser = {
+                id: AuthManager.getUserId(),
+                email: AuthManager.getUserEmail() || email,
+            };
             UIManager.showAppSection();
-            this.loadAppData();
+            await this.loadAppData();
             UIManager.showToast('Logged in successfully');
         } catch (error) {
             UIManager.setError('loginError', error.message);
@@ -161,7 +175,7 @@ class FileUploadApp {
 
     async loadAppData() {
         document.getElementById('userDisplay').textContent = 
-            `Logged in as ${this.currentUser.email}`;
+            `Logged in as ${this.currentUser?.email || 'User'}`;
         
         await this.loadFiles();
         await this.loadShares();
@@ -175,11 +189,33 @@ class FileUploadApp {
 
         try {
             this.files = await APIClient.getUploads() || [];
-            
-            if (this.files.length === 0) {
+            this.shares = await APIClient.getShares() || [];
+
+            const sharedItems = this.shares
+                .filter(share => share.granteeId === this.currentUser?.id)
+                .map(share => ({
+                    id: share.fileId,
+                    fileName: share.fileName,
+                    shared: true,
+                    sharedBy: share.ownerEmail,
+                    accessLevel: share.accessLevel,
+                    createdAt: share.createdAt,
+                }));
+
+            const allFiles = [
+                ...this.files.map(file => ({
+                    id: file.id,
+                    fileName: `${file.originalName}.${file.extension}`,
+                    uploadedAt: file.uploadedAt,
+                    shared: false,
+                })),
+                ...sharedItems,
+            ];
+
+            if (allFiles.length === 0) {
                 document.getElementById('filesEmpty').classList.remove('hidden');
             } else {
-                this.renderFilesList();
+                this.renderFilesList(allFiles);
                 document.getElementById('filesList').classList.remove('hidden');
             }
         } catch (error) {
@@ -189,25 +225,28 @@ class FileUploadApp {
         }
     }
 
-    renderFilesList() {
+    renderFilesList(fileItems) {
         const list = document.getElementById('filesList');
         list.innerHTML = '';
 
-        this.files.forEach(file => {
-            const fileName = `${file.originalName}.${file.extension}`;
-            const uploadDate = new Date(file.uploadedAt).toLocaleString();
+        fileItems.forEach(file => {
+            const fileName = UIManager.escapeHtml(file.fileName || 'Unknown');
+            const uploadDate = new Date(file.uploadedAt || file.createdAt).toLocaleString();
+            const metaText = file.shared
+                ? `Shared by ${UIManager.escapeHtml(file.sharedBy || 'Unknown')} · ${UIManager.escapeHtml(this.getAccessLabel(file.accessLevel))}`
+                : `Uploaded: ${uploadDate}`;
             
             const item = document.createElement('div');
             item.className = 'file-item';
             item.innerHTML = `
                 <div class="file-info">
-                    <div class="file-name">${UIManager.escapeHtml(fileName)}</div>
+                    <div class="file-name">${fileName}</div>
                     <div class="file-meta">
-                        Uploaded: ${uploadDate}
+                        ${metaText}
                     </div>
                 </div>
                 <div class="file-actions">
-                    <button class="btn btn-small" data-download-id="${file.id}" data-file-name="${UIManager.escapeHtml(fileName)}">
+                    <button class="btn btn-small" data-download-id="${file.id}" data-file-name="${fileName}">
                         Download
                     </button>
                     <button class="btn btn-small btn-danger" data-file-id="${file.id}">
@@ -226,6 +265,17 @@ class FileUploadApp {
 
             list.appendChild(item);
         });
+    }
+
+    getAccessLabel(accessLevel) {
+        switch (accessLevel) {
+            case 'write':
+                return 'View/Download and Share';
+            case 'delete':
+                return 'View/Download, Share, and Delete';
+            default:
+                return 'View/Download';
+        }
     }
 
     async handleDownloadFile(fileId, fileName) {
@@ -338,11 +388,15 @@ class FileUploadApp {
         const tbody = table.querySelector('tbody');
         this.shares.forEach(share => {
             const createdDate = new Date(share.createdAt).toLocaleString();
+            const sharedLabel = (share.ownerId === this.currentUser?.id)
+                ? share.granteeEmail || 'Unknown'
+                : share.ownerEmail || 'Unknown';
+            const accessLabel = this.getAccessLabel(share.accessLevel);
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${UIManager.escapeHtml(share.fileName || 'Unknown')}</td>
-                <td>${UIManager.escapeHtml(share.email || 'Unknown')}</td>
-                <td>${UIManager.escapeHtml(share.accessLevel || 'view')}</td>
+                <td>${UIManager.escapeHtml(sharedLabel)}</td>
+                <td>${UIManager.escapeHtml(accessLabel)}</td>
                 <td>${createdDate}</td>
                 <td>
                     <button class="btn btn-small btn-danger" data-share-id="${share.id}">

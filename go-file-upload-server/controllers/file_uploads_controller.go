@@ -162,8 +162,20 @@ func (f FileUploadsController) HandleDeleteUpload(w http.ResponseWriter, r *http
 	}
 
 	if upload.OwnerID != current.Id {
-		f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
-		return
+		if concrete, ok := f.repository.(interface{ UserHasAccess(string, string, string) (bool, error) }); ok {
+			allowed, err := concrete.UserHasAccess(id, current.Id, "delete")
+			if err != nil {
+				f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
+				return
+			}
+			if !allowed {
+				f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
+				return
+			}
+		} else {
+			f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
+			return
+		}
 	}
 
 	if err := f.repository.DeleteFileUpload(id); err != nil {
@@ -195,8 +207,20 @@ func (f FileUploadsController) HandleDownloadUpload(w http.ResponseWriter, r *ht
 	}
 
 	if upload.OwnerID != current.Id {
-		f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
-		return
+		if concrete, ok := f.repository.(interface{ UserHasAccess(string, string, string) (bool, error) }); ok {
+			allowed, err := concrete.UserHasAccess(id, current.Id, "read")
+			if err != nil {
+				f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
+				return
+			}
+			if !allowed {
+				f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
+				return
+			}
+		} else {
+			f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden"))
+			return
+		}
 	}
 
 	data, err := f.repository.GetFileUploadDataByID(id)
