@@ -11,6 +11,7 @@ type TimeEntry struct {
     Id              string     `json:"id"`
     TaskID          string     `json:"taskId"`
     UserID          string     `json:"userId"`
+    UserFirstName   string     `json:"userFirstName,omitempty"`
     StartTime       time.Time  `json:"startTime"`
     EndTime         *time.Time `json:"endTime,omitempty"`
     DurationMinutes int        `json:"durationMinutes"`

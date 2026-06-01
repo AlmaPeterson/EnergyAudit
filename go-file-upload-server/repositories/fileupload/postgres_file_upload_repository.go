@@ -801,8 +801,8 @@ func (p PostgresFileUploadRepository) CreateTimeEntry(entry domain.TimeEntry) (d
 
 func (p PostgresFileUploadRepository) GetTimeEntryByID(id string) (domain.TimeEntry, error) {
     var entry domain.TimeEntry
-    row := p.db.QueryRow(`SELECT id, task_id, user_id, start_time, end_time, duration_minutes, note, created_at FROM time_entries WHERE id = $1`, id)
-    if err := row.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
+    row := p.db.QueryRow(`SELECT te.id, te.task_id, te.user_id, u.first_name, te.start_time, te.end_time, te.duration_minutes, te.note, te.created_at FROM time_entries te JOIN users u ON te.user_id = u.id WHERE te.id = $1`, id)
+    if err := row.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.UserFirstName, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
         if errors.Is(err, sql.ErrNoRows) {
             return domain.TimeEntry{}, fmt.Errorf("time entry not found")
         }
@@ -813,8 +813,8 @@ func (p PostgresFileUploadRepository) GetTimeEntryByID(id string) (domain.TimeEn
 
 func (p PostgresFileUploadRepository) GetActiveTimeEntry(taskID, userID string) (domain.TimeEntry, error) {
     var entry domain.TimeEntry
-    row := p.db.QueryRow(`SELECT id, task_id, user_id, start_time, end_time, duration_minutes, note, created_at FROM time_entries WHERE task_id = $1 AND user_id = $2 AND end_time IS NULL ORDER BY start_time DESC LIMIT 1`, taskID, userID)
-    if err := row.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
+    row := p.db.QueryRow(`SELECT te.id, te.task_id, te.user_id, u.first_name, te.start_time, te.end_time, te.duration_minutes, te.note, te.created_at FROM time_entries te JOIN users u ON te.user_id = u.id WHERE te.task_id = $1 AND te.user_id = $2 AND te.end_time IS NULL ORDER BY te.start_time DESC LIMIT 1`, taskID, userID)
+    if err := row.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.UserFirstName, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
         if errors.Is(err, sql.ErrNoRows) {
             return domain.TimeEntry{}, fmt.Errorf("active time entry not found")
         }
@@ -833,7 +833,7 @@ func (p PostgresFileUploadRepository) UpdateTimeEntry(entry domain.TimeEntry) (d
 }
 
 func (p PostgresFileUploadRepository) ListTimeEntriesByTask(taskID string) ([]domain.TimeEntry, error) {
-    rows, err := p.db.Query(`SELECT id, task_id, user_id, start_time, end_time, duration_minutes, note, created_at FROM time_entries WHERE task_id = $1 ORDER BY start_time DESC`, taskID)
+    rows, err := p.db.Query(`SELECT te.id, te.task_id, te.user_id, u.first_name, te.start_time, te.end_time, te.duration_minutes, te.note, te.created_at FROM time_entries te JOIN users u ON te.user_id = u.id WHERE te.task_id = $1 ORDER BY te.start_time DESC`, taskID)
     if err != nil {
         return nil, err
     }
@@ -842,7 +842,7 @@ func (p PostgresFileUploadRepository) ListTimeEntriesByTask(taskID string) ([]do
     entries := []domain.TimeEntry{}
     for rows.Next() {
         var entry domain.TimeEntry
-        if err := rows.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
+        if err := rows.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.UserFirstName, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
             return nil, err
         }
         entries = append(entries, entry)
@@ -854,7 +854,7 @@ func (p PostgresFileUploadRepository) ListTimeEntriesByTask(taskID string) ([]do
 }
 
 func (p PostgresFileUploadRepository) ListTimeEntriesByUser(userID string) ([]domain.TimeEntry, error) {
-    rows, err := p.db.Query(`SELECT id, task_id, user_id, start_time, end_time, duration_minutes, note, created_at FROM time_entries WHERE user_id = $1 ORDER BY start_time DESC`, userID)
+    rows, err := p.db.Query(`SELECT te.id, te.task_id, te.user_id, u.first_name, te.start_time, te.end_time, te.duration_minutes, te.note, te.created_at FROM time_entries te JOIN users u ON te.user_id = u.id WHERE te.user_id = $1 ORDER BY te.start_time DESC`, userID)
     if err != nil {
         return nil, err
     }
@@ -863,7 +863,7 @@ func (p PostgresFileUploadRepository) ListTimeEntriesByUser(userID string) ([]do
     entries := []domain.TimeEntry{}
     for rows.Next() {
         var entry domain.TimeEntry
-        if err := rows.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
+        if err := rows.Scan(&entry.Id, &entry.TaskID, &entry.UserID, &entry.UserFirstName, &entry.StartTime, &entry.EndTime, &entry.DurationMinutes, &entry.Note, &entry.CreatedAt); err != nil {
             return nil, err
         }
         entries = append(entries, entry)

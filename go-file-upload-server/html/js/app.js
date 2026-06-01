@@ -578,6 +578,7 @@ class EnergyAuditApp {
                     <th>Start</th>
                     <th>End</th>
                     <th>Duration</th>
+                    <th>User</th>
                     <th>Note</th>
                 </tr>
             </thead>
@@ -585,12 +586,23 @@ class EnergyAuditApp {
         `;
         const tbody = table.querySelector('tbody');
 
+        const userLabel = (entry) => {
+            if (entry.userFirstName) {
+                return this.currentUser?.id === entry.userId ? 'You' : entry.userFirstName;
+            }
+            if (entry.userId) {
+                return `${entry.userId.substring(0, 8)}`;
+            }
+            return 'Unknown';
+        };
+
         this.timeEntries.forEach((entry) => {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${UIManager.escapeHtml(new Date(entry.startTime).toLocaleString())}</td>
                 <td>${entry.endTime ? UIManager.escapeHtml(new Date(entry.endTime).toLocaleString()) : 'In progress'}</td>
                 <td>${UIManager.escapeHtml(this.formatDuration(entry.durationMinutes))}</td>
+                <td>${UIManager.escapeHtml(userLabel(entry))}</td>
                 <td>${UIManager.escapeHtml(entry.note || '')}</td>
             `;
             tbody.appendChild(row);
