@@ -613,10 +613,14 @@ class EnergyAuditApp {
         }
 
         this.audits.forEach((audit) => {
+            const savedBy = audit.userId && this.currentUser?.id === audit.userId
+                ? 'You'
+                : audit.userFirstName || (audit.userId ? audit.userId.substring(0, 8) : 'Unknown');
             const card = document.createElement('div');
             card.className = 'list-card';
             card.innerHTML = `
                 <h3>Audit at ${UIManager.escapeHtml(new Date(audit.createdAt).toLocaleString())}</h3>
+                <p><strong>Saved by:</strong> ${UIManager.escapeHtml(savedBy)}</p>
                 <p>Easy: ${audit.easy ? 'Yes' : 'No'} · Hard: ${audit.hard ? 'Yes' : 'No'} · Fun: ${audit.fun ? 'Yes' : 'No'} · Not Fun: ${audit.notFun ? 'Yes' : 'No'}</p>
                 <p>Efficiency: ${UIManager.escapeHtml(String(audit.efficiencyRating))}</p>
                 <p>${UIManager.escapeHtml(audit.notes || 'No notes')}</p>
@@ -647,15 +651,29 @@ class EnergyAuditApp {
 
         this.images.forEach((image) => {
             const card = document.createElement('div');
-            card.className = 'list-card';
+            card.className = 'list-card image-card';
             const createdAt = new Date(image.createdAt).toLocaleString();
+            const previewImage = image.mimeType && image.mimeType.startsWith('image/')
+                ? `<img class="image-preview" src="${UIManager.escapeHtml(`${window.location.origin}/api/images/${encodeURIComponent(image.id)}`)}" alt="${UIManager.escapeHtml(image.originalName || 'Uploaded image')}" />`
+                : '';
+
             card.innerHTML = `
-                <h3>${UIManager.escapeHtml(image.photoType || 'Photo')}</h3>
-                <p>${UIManager.escapeHtml(image.originalName || image.fileName || 'Uploaded image')}</p>
-                <p>${UIManager.escapeHtml(createdAt)}</p>
-                <button class="btn btn-small" data-image-id="${image.id}">Download</button>
+                <div class="image-card-main">
+                    ${previewImage}
+                    <div>
+                        <h3>${UIManager.escapeHtml(image.photoType || 'Photo')}</h3>
+                        <p>${UIManager.escapeHtml(image.originalName || image.fileName || 'Uploaded image')}</p>
+                        <p>${UIManager.escapeHtml(createdAt)}</p>
+                        <p>${UIManager.escapeHtml(image.mimeType || 'Unknown type')}</p>
+                    </div>
+                </div>
+                <div class="image-card-actions">
+                    <button class="btn btn-small" data-image-id="${image.id}">View</button>
+                    <button class="btn btn-small" data-download-id="${image.id}">Download</button>
+                </div>
             `;
-            card.querySelector('button').addEventListener('click', () => this.downloadImage(image.id, image.originalName || 'photo')); 
+            card.querySelector('[data-image-id]').addEventListener('click', () => this.viewImage(image.id));
+            card.querySelector('[data-download-id]').addEventListener('click', () => this.downloadImage(image.id, image.originalName || 'photo'));
             list.appendChild(card);
         });
     }
@@ -674,6 +692,11 @@ class EnergyAuditApp {
         } catch (error) {
             UIManager.showToast(error.message, 'error');
         }
+    }
+
+    viewImage(imageId) {
+        const url = `${window.location.origin}/api/images/${encodeURIComponent(imageId)}`;
+        window.open(url, '_blank');
     }
 
     async selectJob(job) {

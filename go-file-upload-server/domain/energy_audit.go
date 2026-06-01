@@ -12,6 +12,7 @@ type EnergyAudit struct {
     TaskID           string    `json:"taskId"`
     JobID            string    `json:"jobId"`
     UserID           string    `json:"userId"`
+    UserFirstName    string    `json:"userFirstName,omitempty"`
     Easy             bool      `json:"easy"`
     Hard             bool      `json:"hard"`
     Fun              bool      `json:"fun"`

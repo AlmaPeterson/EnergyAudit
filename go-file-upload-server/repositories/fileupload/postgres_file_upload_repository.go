@@ -884,7 +884,7 @@ func (p PostgresFileUploadRepository) CreateEnergyAudit(audit domain.EnergyAudit
 }
 
 func (p PostgresFileUploadRepository) ListEnergyAuditsByTask(taskID string) ([]domain.EnergyAudit, error) {
-    rows, err := p.db.Query(`SELECT id, task_id, job_id, user_id, easy, hard, fun, not_fun, efficiency_rating, notes, created_at FROM energy_audits WHERE task_id = $1 ORDER BY created_at DESC`, taskID)
+    rows, err := p.db.Query(`SELECT ea.id, ea.task_id, ea.job_id, ea.user_id, u.first_name, ea.easy, ea.hard, ea.fun, ea.not_fun, ea.efficiency_rating, ea.notes, ea.created_at FROM energy_audits ea JOIN users u ON ea.user_id = u.id WHERE ea.task_id = $1 ORDER BY ea.created_at DESC`, taskID)
     if err != nil {
         return nil, err
     }
@@ -893,7 +893,7 @@ func (p PostgresFileUploadRepository) ListEnergyAuditsByTask(taskID string) ([]d
     audits := []domain.EnergyAudit{}
     for rows.Next() {
         var audit domain.EnergyAudit
-        if err := rows.Scan(&audit.Id, &audit.TaskID, &audit.JobID, &audit.UserID, &audit.Easy, &audit.Hard, &audit.Fun, &audit.NotFun, &audit.EfficiencyRating, &audit.Notes, &audit.CreatedAt); err != nil {
+        if err := rows.Scan(&audit.Id, &audit.TaskID, &audit.JobID, &audit.UserID, &audit.UserFirstName, &audit.Easy, &audit.Hard, &audit.Fun, &audit.NotFun, &audit.EfficiencyRating, &audit.Notes, &audit.CreatedAt); err != nil {
             return nil, err
         }
         audits = append(audits, audit)
