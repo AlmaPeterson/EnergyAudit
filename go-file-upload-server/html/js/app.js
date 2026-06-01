@@ -7,6 +7,8 @@ class EnergyAuditApp {
         this.currentUser = null;
         this.currentJob = null;
         this.currentTask = null;
+        this.currentPage = 'jobs';
+        this.currentTaskPage = 'time';
         this.jobs = [];
         this.tasks = [];
         this.timeEntries = [];
@@ -40,9 +42,15 @@ class EnergyAuditApp {
         document.getElementById('createTaskBtn').addEventListener('click', () => this.handleCreateTask());
         document.getElementById('refreshTasksBtn').addEventListener('click', () => this.loadTasks());
         document.getElementById('createTimeEntryBtn').addEventListener('click', () => this.handleCreateTimeEntry());
+        document.getElementById('startTimerBtn').addEventListener('click', () => this.handleStartTimer());
         document.getElementById('stopTimeEntryBtn').addEventListener('click', () => this.handleStopActiveTimeEntry());
         document.getElementById('createAuditBtn').addEventListener('click', () => this.handleCreateAudit());
         document.getElementById('uploadImageBtn').addEventListener('click', () => this.handleUploadImage());
+        document.getElementById('backToJobsBtn').addEventListener('click', () => this.showPage('jobs'));
+        document.getElementById('backToTasksBtn').addEventListener('click', () => this.showPage('tasks'));
+        document.getElementById('showTimePageBtn').addEventListener('click', () => this.showTaskSubpage('time'));
+        document.getElementById('showAuditPageBtn').addEventListener('click', () => this.showTaskSubpage('audit'));
+        document.getElementById('showPhotoPageBtn').addEventListener('click', () => this.showTaskSubpage('photo'));
 
         ['loginEmail', 'loginPassword'].forEach((id) => {
             const input = document.getElementById(id);
@@ -51,6 +59,32 @@ class EnergyAuditApp {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     this.handleLogin();
+                }
+            });
+        });
+
+        this.addEnterKeyHandlers();
+    }
+
+    addEnterKeyHandlers() {
+        const enterTargets = [
+            { id: 'jobTitleInput', action: () => this.handleCreateJob() },
+            { id: 'taskTitleInput', action: () => this.handleCreateTask() },
+            { id: 'timeEntryStartDateInput', action: () => this.handleCreateTimeEntry() },
+            { id: 'timeEntryStartTimeInput', action: () => this.handleCreateTimeEntry() },
+            { id: 'timeEntryEndDateInput', action: () => this.handleCreateTimeEntry() },
+            { id: 'timeEntryEndTimeInput', action: () => this.handleCreateTimeEntry() },
+            { id: 'auditEfficiencyRating', action: () => this.handleCreateAudit() },
+            { id: 'imagePhotoType', action: () => this.handleUploadImage() },
+        ];
+
+        enterTargets.forEach(({ id, action }) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    action();
                 }
             });
         });
@@ -131,6 +165,8 @@ class EnergyAuditApp {
         await this.loadJobs();
         this.clearJobSelection();
         this.clearTaskSelection();
+        this.showPage('jobs');
+        this.showTaskSubpage('time');
     }
 
     async loadJobs() {
@@ -253,8 +289,10 @@ class EnergyAuditApp {
     }
 
     async handleCreateTimeEntry() {
-        const start = document.getElementById('timeEntryStartInput').value;
-        const end = document.getElementById('timeEntryEndInput').value;
+        const startDate = document.getElementById('timeEntryStartDateInput').value;
+        const startTime = document.getElementById('timeEntryStartTimeInput').value;
+        const endDate = document.getElementById('timeEntryEndDateInput').value;
+        const endTime = document.getElementById('timeEntryEndTimeInput').value;
         const note = document.getElementById('timeEntryNoteInput').value.trim();
         UIManager.setError('timeEntryError', '');
 
@@ -263,17 +301,56 @@ class EnergyAuditApp {
             return;
         }
 
-        if (!start) {
-            UIManager.setError('timeEntryError', 'Start time is required');
+        if (!startDate || !startTime) {
+            UIManager.setError('timeEntryError', 'Start date and start time are required');
             return;
         }
 
+        if ((endDate && !endTime) || (!endDate && endTime)) {
+            UIManager.setError('timeEntryError', 'Both end date and end time are required or leave both blank');
+            return;
+        }
+
+        const start = `${startDate}T${startTime}:00`;
+        const end = endDate && endTime ? `${endDate}T${endTime}:00` : null;
+
         try {
-            await APIClient.createTimeEntry(this.currentTask.id, start, end || null, note);
+            await APIClient.createTimeEntry(this.currentTask.id, start, end, note);
             UIManager.showToast('Time entry saved');
+            document.getElementById('timeEntryStartDateInput').value = '';
+            document.getElementById('timeEntryStartTimeInput').value = '';
+            document.getElementById('timeEntryEndDateInput').value = '';
+            document.getElementById('timeEntryEndTimeInput').value = '';
+            document.getElementById('timeEntryNoteInput').value = '';
+            await this.loadTimeEntries();
+        } catch (error) {
+            UIManager.setError('timeEntryError', error.message);
+        }
+    }
+
+    async handleStartTimer() {
+        UIManager.setError('timeEntryError', '');
+
+        if (!this.currentTask) {
+            UIManager.setError('timeEntryError', 'Select a task before starting a timer');
+            return;
+        }
+
+        const activeEntry = this.timeEntries.find((entry) => !entry.endTime);
+        if (activeEntry) {
+            UIManager.setError('timeEntryError', 'Stop the active timer before starting another one');
+            return;
+        }
+
+        const note = document.getElementById('timeEntryNoteInput').value.trim();
+        const start = new Date().toISOString();
+
+        try {
+            await APIClient.createTimeEntry(this.currentTask.id, start, null, note);
+            UIManager.showToast('Timer started');
+            document.getElementById('timeEntryNoteInput').value = '';
             document.getElementById('timeEntryStartInput').value = '';
             document.getElementById('timeEntryEndInput').value = '';
-            document.getElementById('timeEntryNoteInput').value = '';
             await this.loadTimeEntries();
         } catch (error) {
             UIManager.setError('timeEntryError', error.message);
@@ -373,18 +450,36 @@ class EnergyAuditApp {
             return;
         }
 
+        const table = document.createElement('table');
+        table.className = 'tasks-table';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Job</th>
+                    <th>Description</th>
+                    <th>Job ID</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        `;
+
+        const tbody = table.querySelector('tbody');
         this.jobs.forEach((job) => {
-            const card = document.createElement('div');
-            card.className = 'list-card';
-            card.innerHTML = `
-                <h3>${UIManager.escapeHtml(job.title)}</h3>
-                <p>${UIManager.escapeHtml(job.description || 'No description added')}</p>
-                <button class="btn btn-small" data-job-id="${job.id}">${this.currentJob?.id === job.id ? 'Selected' : 'Select'}</button>
+            const row = document.createElement('tr');
+            const isSelected = this.currentJob?.id === job.id;
+            row.innerHTML = `
+                <td>${UIManager.escapeHtml(job.title)}</td>
+                <td>${UIManager.escapeHtml(job.description || 'No description added')}</td>
+                <td>${UIManager.escapeHtml(job.id.substring(0, 8))}</td>
+                <td><button class="btn btn-small">${isSelected ? 'Selected' : 'Select'}</button></td>
             `;
 
-            card.querySelector('button').addEventListener('click', () => this.selectJob(job));
-            list.appendChild(card);
+            row.querySelector('button').addEventListener('click', () => this.selectJob(job));
+            tbody.appendChild(row);
         });
+
+        list.appendChild(table);
     }
 
     async renderTasksList() {
@@ -407,23 +502,45 @@ class EnergyAuditApp {
             return;
         }
 
+        const table = document.createElement('table');
+        table.className = 'tasks-table';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Task ID</th>
+                    <th>Task</th>
+                    <th>Description</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        `;
+
+        const tbody = table.querySelector('tbody');
         this.tasks.forEach((task) => {
-            const card = document.createElement('div');
-            card.className = 'list-card';
-            card.innerHTML = `
-                <h3>${UIManager.escapeHtml(task.title)}</h3>
-                <p>${UIManager.escapeHtml(task.description || 'No description added')}</p>
-                <button class="btn btn-small" data-task-id="${task.id}">${this.currentTask?.id === task.id ? 'Selected' : 'Select'}</button>
+            const isSelected = this.currentTask?.id === task.id;
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${UIManager.escapeHtml(task.id.substring(0, 8))}</td>
+                <td>${UIManager.escapeHtml(task.title)}</td>
+                <td>${UIManager.escapeHtml(task.description || 'No description added')}</td>
+                <td><button class="btn btn-small">${isSelected ? 'Selected' : 'Select'}</button></td>
             `;
 
-            card.querySelector('button').addEventListener('click', () => this.selectTask(task));
-            list.appendChild(card);
+            row.querySelector('button').addEventListener('click', () => this.selectTask(task));
+            tbody.appendChild(row);
         });
+
+        list.appendChild(table);
     }
 
     renderTimeEntries() {
         const list = document.getElementById('timeEntriesList');
         list.innerHTML = '';
+
+        const summary = document.getElementById('taskTimeSummary');
+        summary.classList.add('hidden');
+        summary.innerHTML = '';
 
         if (!this.currentTask) {
             const empty = document.createElement('div');
@@ -433,6 +550,18 @@ class EnergyAuditApp {
             return;
         }
 
+        const totalMinutes = this.timeEntries.reduce((sum, entry) => sum + entry.durationMinutes, 0);
+        const activeEntry = this.timeEntries.find((entry) => !entry.endTime);
+
+        summary.classList.remove('hidden');
+        summary.innerHTML = `
+            <h3>${UIManager.escapeHtml(this.currentTask.title)}</h3>
+            <p>${UIManager.escapeHtml(this.currentTask.description || 'No description added')}</p>
+            <p><strong>Total tracked time:</strong> ${this.formatDuration(totalMinutes)}</p>
+            <p><strong>Task ID:</strong> ${UIManager.escapeHtml(this.currentTask.id.substring(0, 8))}</p>
+            ${activeEntry ? `<p><strong>Active session started:</strong> ${UIManager.escapeHtml(new Date(activeEntry.startTime).toLocaleString())}</p>` : ''}
+        `;
+
         if (this.timeEntries.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'empty-state';
@@ -441,15 +570,39 @@ class EnergyAuditApp {
             return;
         }
 
+        const table = document.createElement('table');
+        table.className = 'time-table';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Duration</th>
+                    <th>Note</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        `;
+        const tbody = table.querySelector('tbody');
+
         this.timeEntries.forEach((entry) => {
-            const card = document.createElement('div');
-            card.className = 'list-card';
-            card.innerHTML = `
-                <h3>${entry.note ? UIManager.escapeHtml(entry.note) : 'Time entry'}</h3>
-                <p>${UIManager.escapeHtml(new Date(entry.startTime).toLocaleString())} - ${entry.endTime ? UIManager.escapeHtml(new Date(entry.endTime).toLocaleString()) : 'In progress'}</p>
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${UIManager.escapeHtml(new Date(entry.startTime).toLocaleString())}</td>
+                <td>${entry.endTime ? UIManager.escapeHtml(new Date(entry.endTime).toLocaleString()) : 'In progress'}</td>
+                <td>${UIManager.escapeHtml(this.formatDuration(entry.durationMinutes))}</td>
+                <td>${UIManager.escapeHtml(entry.note || '')}</td>
             `;
-            list.appendChild(card);
+            tbody.appendChild(row);
         });
+
+        list.appendChild(table);
+    }
+
+    formatDuration(totalMinutes) {
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return `${hours}h ${minutes}m`;
     }
 
     renderAudits() {
@@ -541,12 +694,16 @@ class EnergyAuditApp {
         document.getElementById('selectedJobTitle').textContent = `Selected Job: ${job.title}`;
         await this.loadTasks();
         this.clearTaskSelection();
+        this.showPage('tasks');
     }
 
     async selectTask(task) {
         this.currentTask = task;
         document.getElementById('selectedTaskTitle').textContent = `Selected Task: ${task.title}`;
         await Promise.all([this.loadTimeEntries(), this.loadAudits(), this.loadImages()]);
+        this.showPage('taskDetail');
+        this.showTaskSubpage('time');
+        this.setTimeEntryDefaultDates();
     }
 
     clearJobSelection() {
@@ -554,6 +711,16 @@ class EnergyAuditApp {
         document.getElementById('selectedJobTitle').textContent = 'Select a job to manage tasks.';
         this.tasks = [];
         this.renderTasksList();
+        this.currentTask = null;
+        document.getElementById('selectedTaskTitle').textContent = 'Select a task to log time.';
+        this.timeEntries = [];
+        this.audits = [];
+        this.images = [];
+        this.renderTimeEntries();
+        this.renderAudits();
+        this.renderImages();
+        this.showPage('jobs');
+        this.showTaskSubpage('time');
     }
 
     clearTaskSelection() {
@@ -565,6 +732,63 @@ class EnergyAuditApp {
         this.renderTimeEntries();
         this.renderAudits();
         this.renderImages();
+        this.showPage('tasks');
+        this.showTaskSubpage('time');
+        this.setTimeEntryDefaultDates();
+    }
+
+    showPage(page) {
+        this.currentPage = page;
+
+        document.getElementById('jobsPage').classList.toggle('hidden', page !== 'jobs');
+        document.getElementById('tasksPage').classList.toggle('hidden', page !== 'tasks');
+        document.getElementById('taskDetailPage').classList.toggle('hidden', page !== 'taskDetail');
+    }
+
+    showTaskSubpage(subpage) {
+        this.currentTaskPage = subpage;
+        document.getElementById('timeSubpage').classList.toggle('hidden', subpage !== 'time');
+        document.getElementById('auditSubpage').classList.toggle('hidden', subpage !== 'audit');
+        document.getElementById('photoSubpage').classList.toggle('hidden', subpage !== 'photo');
+
+        if (subpage === 'time') {
+            this.setTimeEntryDefaultDates();
+        }
+
+        ['showTimePageBtn', 'showAuditPageBtn', 'showPhotoPageBtn'].forEach((buttonId) => {
+            const button = document.getElementById(buttonId);
+            if (!button) return;
+            button.classList.toggle('active', buttonId === `show${subpage.charAt(0).toUpperCase() + subpage.slice(1)}PageBtn`);
+        });
+    }
+
+    setTimeEntryDefaultDates() {
+        const now = new Date();
+        const localDate = now.toISOString().split('T')[0];
+        const localTime = now.toTimeString().slice(0, 5);
+        const startDateInput = document.getElementById('timeEntryStartDateInput');
+        const endDateInput = document.getElementById('timeEntryEndDateInput');
+        const startTimeInput = document.getElementById('timeEntryStartTimeInput');
+        const endTimeInput = document.getElementById('timeEntryEndTimeInput');
+
+        if (startDateInput && !startDateInput.value) {
+            startDateInput.value = localDate;
+        }
+        if (endDateInput && !endDateInput.value) {
+            endDateInput.value = localDate;
+        }
+        if (startTimeInput && !startTimeInput.value) {
+            startTimeInput.value = localTime;
+        }
+        if (endTimeInput && !endTimeInput.value) {
+            endTimeInput.value = localTime;
+        }
+    }
+
+    toggleSection(sectionId, isVisible) {
+        const section = document.getElementById(sectionId);
+        if (!section) return;
+        section.classList.toggle('hidden', !isVisible);
     }
 
     checkAuthStatus() {

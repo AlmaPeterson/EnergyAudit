@@ -69,7 +69,24 @@ func (c TimeEntriesController) HandleCreateTimeEntry(w http.ResponseWriter, r *h
 
     taskID := req.TaskID
 
-    startTime, err := time.Parse(time.RFC3339, req.StartTime)
+    parseTimestamp := func(value string) (time.Time, error) {
+        if value == "" {
+            return time.Time{}, fmt.Errorf("timestamp is empty")
+        }
+
+        if t, err := time.Parse(time.RFC3339, value); err == nil {
+            return t, nil
+        }
+        if t, err := time.Parse(time.RFC3339Nano, value); err == nil {
+            return t, nil
+        }
+        if t, err := time.ParseInLocation("2006-01-02T15:04:05", value, time.Local); err == nil {
+            return t, nil
+        }
+        return time.Time{}, fmt.Errorf("invalid timestamp format")
+    }
+
+    startTime, err := parseTimestamp(req.StartTime)
     if err != nil {
         c.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("invalid startTime: %w", err))
         return
@@ -77,7 +94,7 @@ func (c TimeEntriesController) HandleCreateTimeEntry(w http.ResponseWriter, r *h
 
     var endTime *time.Time
     if req.EndTime != "" {
-        parsed, err := time.Parse(time.RFC3339, req.EndTime)
+        parsed, err := parseTimestamp(req.EndTime)
         if err != nil {
             c.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("invalid endTime: %w", err))
             return

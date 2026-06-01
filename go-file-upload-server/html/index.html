@@ -89,8 +89,19 @@
                 </aside>
 
                 <section class="main-panel">
-                    <section class="card">
-                        <div class="section-header">
+                    <section id="jobsPage" class="page card">
+                        <div class="page-header">
+                            <h2>Jobs</h2>
+                            <p class="subtitle">Create a job or select a job from the list.</p>
+                        </div>
+                        <div class="page-content">
+                            <p class="empty-state">Use the left job panel to create or select a job.</p>
+                        </div>
+                    </section>
+
+                    <section id="tasksPage" class="page card hidden">
+                        <div class="page-header">
+                            <button id="backToJobsBtn" class="btn btn-small">Back</button>
                             <div>
                                 <h2>Tasks</h2>
                                 <p id="selectedJobTitle" class="subtitle">Select a job to manage tasks.</p>
@@ -110,97 +121,112 @@
                         <div id="tasksList" class="tasks-list"></div>
                     </section>
 
-                    <section class="card">
-                        <div class="section-header">
+                    <section id="taskDetailPage" class="page card hidden">
+                        <div class="page-header">
+                            <button id="backToTasksBtn" class="btn btn-small">Back</button>
                             <div>
-                                <h2>Time Entries</h2>
-                                <p id="selectedTaskTitle" class="subtitle">Select a task to log time.</p>
+                                <h2>Task Details</h2>
+                                <p id="selectedTaskTitle" class="subtitle">Select a task to see details.</p>
                             </div>
                         </div>
-                        <div class="form-row">
+                        <div class="page-nav">
+                            <button id="showTimePageBtn" class="btn btn-small">Time</button>
+                            <button id="showAuditPageBtn" class="btn btn-small">Audit</button>
+                            <button id="showPhotoPageBtn" class="btn btn-small">Photos</button>
+                        </div>
+                        <div id="timeSubpage" class="page-subpage">
+                            <div id="taskTimeSummary" class="list-card hidden"></div>
+                            <div id="timeEntriesList" class="entries-list"></div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="timeEntryStartDateInput">Start date</label>
+                                    <input type="date" id="timeEntryStartDateInput">
+                                </div>
+                                <div class="form-group">
+                                    <label for="timeEntryStartTimeInput">Start time</label>
+                                    <input type="time" id="timeEntryStartTimeInput">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="timeEntryEndDateInput">End date</label>
+                                    <input type="date" id="timeEntryEndDateInput">
+                                </div>
+                                <div class="form-group">
+                                    <label for="timeEntryEndTimeInput">End time</label>
+                                    <input type="time" id="timeEntryEndTimeInput">
+                                </div>
+                            </div>
                             <div class="form-group">
-                                <label for="timeEntryStartInput">Start</label>
-                                <input type="datetime-local" id="timeEntryStartInput">
+                                <label for="timeEntryNoteInput">Note</label>
+                                <textarea id="timeEntryNoteInput" rows="2" placeholder="Optional note"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <button id="startTimerBtn" class="btn btn-small">Start Timer</button>
+                                <button id="createTimeEntryBtn" class="btn btn-primary">Add Entry</button>
+                                <button id="stopTimeEntryBtn" class="btn btn-small">Stop Active Timer</button>
+                            </div>
+                            <div id="timeEntryError" class="error-message"></div>
+                        </div>
+
+                        <div id="auditSubpage" class="page-subpage hidden">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="auditEasy"> Easy
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="auditHard"> Hard
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="auditFun"> Fun
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="auditNotFun"> Not Fun
+                                    </label>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label for="timeEntryEndInput">End</label>
-                                <input type="datetime-local" id="timeEntryEndInput">
+                                <label for="auditEfficiencyRating">Efficiency Rating</label>
+                                <input type="number" id="auditEfficiencyRating" min="1" max="10" placeholder="1-10">
                             </div>
+                            <div class="form-group">
+                                <label for="auditNotes">Notes</label>
+                                <textarea id="auditNotes" rows="3" placeholder="Observations and findings"></textarea>
+                            </div>
+                            <button id="createAuditBtn" class="btn btn-primary">Save Audit</button>
+                            <div id="auditError" class="error-message"></div>
+                            <div id="auditStatus" class="loading hidden">Loading audits...</div>
+                            <div id="auditList" class="entries-list"></div>
                         </div>
-                        <div class="form-group">
-                            <label for="timeEntryNoteInput">Note</label>
-                            <textarea id="timeEntryNoteInput" rows="2" placeholder="Optional note"></textarea>
+
+                        <div id="photoSubpage" class="page-subpage hidden">
+                            <div class="form-group">
+                                <label for="imageUploadInput">Upload Image</label>
+                                <input type="file" id="imageUploadInput" accept="image/*">
+                            </div>
+                            <div class="form-group">
+                                <label for="imagePhotoType">Photo Type</label>
+                                <select id="imagePhotoType">
+                                    <option value="site">Site</option>
+                                    <option value="equipment">Equipment</option>
+                                    <option value="issue">Issue</option>
+                                </select>
+                            </div>
+                            <button id="uploadImageBtn" class="btn btn-primary">Upload Photo</button>
+                            <div id="imageError" class="error-message"></div>
+                            <div id="imagesList" class="images-list"></div>
                         </div>
-                        <div class="form-row">
-                            <button id="createTimeEntryBtn" class="btn btn-primary">Add Entry</button>
-                            <button id="stopTimeEntryBtn" class="btn btn-small">Stop Active Timer</button>
-                        </div>
-                        <div id="timeEntryError" class="error-message"></div>
-                        <div id="timeEntriesList" class="entries-list"></div>
                     </section>
 
-                    <section class="card">
-                        <div class="section-header">
-                            <h2>Energy Audit</h2>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="auditEasy"> Easy
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="auditHard"> Hard
-                                </label>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="auditFun"> Fun
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="auditNotFun"> Not Fun
-                                </label>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="auditEfficiencyRating">Efficiency Rating</label>
-                            <input type="number" id="auditEfficiencyRating" min="1" max="10" placeholder="1-10">
-                        </div>
-                        <div class="form-group">
-                            <label for="auditNotes">Notes</label>
-                            <textarea id="auditNotes" rows="3" placeholder="Observations and findings"></textarea>
-                        </div>
-                        <button id="createAuditBtn" class="btn btn-primary">Save Audit</button>
-                        <div id="auditError" class="error-message"></div>
-                        <div id="auditStatus" class="loading hidden">Loading audits...</div>
-                        <div id="auditList" class="entries-list"></div>
-                    </section>
-
-                    <section class="card">
-                        <div class="section-header">
-                            <h2>Photos</h2>
-                        </div>
-                        <div class="form-group">
-                            <label for="imageUploadInput">Upload Image</label>
-                            <input type="file" id="imageUploadInput" accept="image/*">
-                        </div>
-                        <div class="form-group">
-                            <label for="imagePhotoType">Photo Type</label>
-                            <select id="imagePhotoType">
-                                <option value="site">Site</option>
-                                <option value="equipment">Equipment</option>
-                                <option value="issue">Issue</option>
-                            </select>
-                        </div>
-                        <button id="uploadImageBtn" class="btn btn-primary">Upload Photo</button>
-                        <div id="imageError" class="error-message"></div>
-                        <div id="imagesList" class="images-list"></div>
-                    </section>
                 </section>
             </div>
         </main>
