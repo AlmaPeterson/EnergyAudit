@@ -450,36 +450,23 @@ class EnergyAuditApp {
             return;
         }
 
-        const table = document.createElement('table');
-        table.className = 'tasks-table';
-        table.innerHTML = `
-            <thead>
-                <tr>
-                    <th>Job</th>
-                    <th>Description</th>
-                    <th>Job ID</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        `;
-
-        const tbody = table.querySelector('tbody');
         this.jobs.forEach((job) => {
-            const row = document.createElement('tr');
             const isSelected = this.currentJob?.id === job.id;
-            row.innerHTML = `
-                <td>${UIManager.escapeHtml(job.title)}</td>
-                <td>${UIManager.escapeHtml(job.description || 'No description added')}</td>
-                <td>${UIManager.escapeHtml(job.id.substring(0, 8))}</td>
-                <td><button class="btn btn-small">${isSelected ? 'Selected' : 'Select'}</button></td>
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = `job-item ${isSelected ? 'selected' : ''}`;
+            item.innerHTML = `
+                <div>
+                    <div class="job-title">${UIManager.escapeHtml(job.title)}</div>
+                    ${isSelected && job.description ? `<p class="job-description">${UIManager.escapeHtml(job.description)}</p>` : ''}
+                </div>
+                <div class="job-meta">
+                    ${isSelected ? '<span class="job-badge">Selected</span>' : ''}
+                </div>
             `;
-
-            row.querySelector('button').addEventListener('click', () => this.selectJob(job));
-            tbody.appendChild(row);
+            item.addEventListener('click', () => this.selectJob(job));
+            list.appendChild(item);
         });
-
-        list.appendChild(table);
     }
 
     async renderTasksList() {
@@ -705,6 +692,7 @@ class EnergyAuditApp {
         this.currentJob = job;
         document.getElementById('selectedJobTitle').textContent = `Selected Job: ${job.title}`;
         await this.loadTasks();
+        await this.loadJobs();
         this.clearTaskSelection();
         this.showPage('tasks');
     }
