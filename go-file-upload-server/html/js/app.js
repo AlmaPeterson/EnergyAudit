@@ -489,36 +489,24 @@ class EnergyAuditApp {
             return;
         }
 
-        const table = document.createElement('table');
-        table.className = 'tasks-table';
-        table.innerHTML = `
-            <thead>
-                <tr>
-                    <th>Task ID</th>
-                    <th>Task</th>
-                    <th>Description</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        `;
-
-        const tbody = table.querySelector('tbody');
         this.tasks.forEach((task) => {
             const isSelected = this.currentTask?.id === task.id;
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${UIManager.escapeHtml(task.id.substring(0, 8))}</td>
-                <td>${UIManager.escapeHtml(task.title)}</td>
-                <td>${UIManager.escapeHtml(task.description || 'No description added')}</td>
-                <td><button class="btn btn-small">${isSelected ? 'Selected' : 'Select'}</button></td>
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = `task-item ${isSelected ? 'selected' : ''}`;
+            item.innerHTML = `
+                <div>
+                    <div class="task-title">${UIManager.escapeHtml(task.title)}</div>
+                    <p class="task-description">${UIManager.escapeHtml(task.description || 'No description added')}</p>
+                    <div class="task-meta">ID: ${UIManager.escapeHtml(task.id.substring(0, 8))}</div>
+                </div>
+                <div class="task-actions">
+                    ${isSelected ? '<span class="task-badge">Selected</span>' : '<span class="task-status">Select</span>'}
+                </div>
             `;
-
-            row.querySelector('button').addEventListener('click', () => this.selectTask(task));
-            tbody.appendChild(row);
+            item.addEventListener('click', () => this.selectTask(task));
+            list.appendChild(item);
         });
-
-        list.appendChild(table);
     }
 
     renderTimeEntries() {

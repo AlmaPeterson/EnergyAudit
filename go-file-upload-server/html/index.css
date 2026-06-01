@@ -652,6 +652,76 @@ a:hover {
     background: rgba(0, 173, 216, 0.12);
 }
 
+.task-item {
+    width: 100%;
+    text-align: left;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    color: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.task-item:hover {
+    border-color: var(--primary);
+    background: rgba(0, 173, 216, 0.06);
+}
+
+.task-item.selected {
+    border-color: var(--primary);
+    background: rgba(0, 173, 216, 0.14);
+}
+
+.task-title {
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.4rem;
+}
+
+.task-description {
+    color: var(--text-secondary);
+    line-height: 1.5;
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+.task-meta {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-top: 0.75rem;
+}
+
+.task-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.task-badge,
+.task-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--bg-dark);
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.task-status {
+    background: rgba(0, 173, 216, 0.15);
+    color: var(--text-primary);
+}
+
 .job-title {
     font-weight: 700;
     color: var(--text-primary);
