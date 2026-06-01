@@ -6,6 +6,8 @@ class FileUploadApp {
     constructor() {
         this.currentUser = null;
         this.files = [];
+        this.folders = [];
+        this.currentFolder = null;
         this.shares = [];
         this.init();
     }
@@ -70,6 +72,9 @@ class FileUploadApp {
 
         // Refresh events
         document.getElementById('refreshFilesBtn').addEventListener('click', () => this.loadFiles());
+        document.getElementById('refreshFoldersBtn').addEventListener('click', () => this.loadFolders());
+        document.getElementById('goRootBtn').addEventListener('click', () => this.handleNavigateRoot());
+        document.getElementById('createFolderBtn').addEventListener('click', () => this.handleCreateFolder());
 
         // Share events
         document.getElementById('createShareBtn').addEventListener('click', () => this.handleCreateShare());
@@ -161,7 +166,7 @@ class FileUploadApp {
         UIManager.setLoading('uploadProgress', true);
 
         try {
-            await APIClient.uploadFile(file);
+            await APIClient.uploadFile(file, this.currentFolder?.id || null);
             UIManager.showToast('File uploaded successfully');
             document.getElementById('fileInput').value = '';
             await this.loadFiles();
@@ -177,6 +182,7 @@ class FileUploadApp {
         document.getElementById('userDisplay').textContent = 
             `Logged in as ${this.currentUser?.email || 'User'}`;
         
+        await this.loadFolders();
         await this.loadFiles();
         await this.loadShares();
         await this.loadShareOptions();
@@ -188,7 +194,7 @@ class FileUploadApp {
         document.getElementById('filesEmpty').classList.add('hidden');
 
         try {
-            this.files = await APIClient.getUploads() || [];
+            this.files = await APIClient.getUploads(this.currentFolder?.id || null) || [];
             this.shares = await APIClient.getShares() || [];
 
             const sharedItems = this.shares
@@ -222,6 +228,111 @@ class FileUploadApp {
             UIManager.showToast('Failed to load files', 'error');
         } finally {
             UIManager.setLoading('filesLoading', false);
+        }
+    }
+
+    async loadFolders() {
+        UIManager.setLoading('foldersLoading', true);
+        document.getElementById('foldersList').classList.add('hidden');
+        document.getElementById('foldersEmpty').classList.add('hidden');
+
+        try {
+            this.folders = await APIClient.getFolders(this.currentFolder?.id || null) || [];
+            this.renderCurrentFolderBreadcrumb();
+
+            if (this.folders.length === 0) {
+                document.getElementById('foldersEmpty').classList.remove('hidden');
+            } else {
+                this.renderFoldersList();
+                document.getElementById('foldersList').classList.remove('hidden');
+            }
+        } catch (error) {
+            UIManager.showToast('Failed to load folders', 'error');
+        } finally {
+            UIManager.setLoading('foldersLoading', false);
+        }
+    }
+
+    renderCurrentFolderBreadcrumb() {
+        const pathElement = document.getElementById('folderCurrentPath');
+        const name = this.currentFolder ? this.currentFolder.name : 'Root';
+        pathElement.textContent = `Current folder: ${name}`;
+        const goRootBtn = document.getElementById('goRootBtn');
+        goRootBtn.classList.toggle('hidden', !this.currentFolder);
+    }
+
+    renderFoldersList() {
+        const list = document.getElementById('foldersList');
+        list.innerHTML = '';
+
+        this.folders.forEach(folder => {
+            const item = document.createElement('div');
+            item.className = 'folder-item';
+            item.innerHTML = `
+                <div class="folder-info">
+                    <div class="folder-name">${UIManager.escapeHtml(folder.name)}</div>
+                </div>
+                <div class="folder-actions">
+                    <button class="btn btn-small" data-folder-open-id="${folder.id}">Open</button>
+                    <button class="btn btn-small btn-danger" data-folder-delete-id="${folder.id}">Delete</button>
+                </div>
+            `;
+
+            item.querySelector('[data-folder-open-id]').addEventListener('click', (e) => {
+                const folderId = e.target.dataset.folderOpenId;
+                const folder = this.folders.find(f => f.id === folderId);
+                if (folder) {
+                    this.handleOpenFolder(folder);
+                }
+            });
+
+            item.querySelector('[data-folder-delete-id]').addEventListener('click', (e) => {
+                const folderId = e.target.dataset.folderDeleteId;
+                this.handleDeleteFolder(folderId);
+            });
+
+            list.appendChild(item);
+        });
+    }
+
+    async handleCreateFolder() {
+        const folderName = document.getElementById('folderNameInput').value.trim();
+        if (!folderName) {
+            UIManager.showToast('Please enter a folder name', 'error');
+            return;
+        }
+
+        try {
+            await APIClient.createFolder(folderName, this.currentFolder?.id || null);
+            UIManager.showToast('Folder created successfully');
+            document.getElementById('folderNameInput').value = '';
+            await this.loadFolders();
+        } catch (error) {
+            UIManager.showToast(error.message, 'error');
+        }
+    }
+
+    async handleOpenFolder(folder) {
+        this.currentFolder = folder;
+        await this.loadFolders();
+        await this.loadFiles();
+    }
+
+    async handleNavigateRoot() {
+        this.currentFolder = null;
+        await this.loadFolders();
+        await this.loadFiles();
+    }
+
+    async handleDeleteFolder(folderId) {
+        if (!confirm('Are you sure you want to delete this folder?')) return;
+
+        try {
+            await APIClient.deleteFolder(folderId);
+            UIManager.showToast('Folder deleted successfully');
+            await this.loadFolders();
+        } catch (error) {
+            UIManager.showToast(error.message, 'error');
         }
     }
 

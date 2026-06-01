@@ -64,6 +64,9 @@ func main() {
 	authController := controllers.NewAuthController(userRepo, &errorHandler)
 	controllerList = append(controllerList, authController)
 
+	foldersController := controllers.NewFoldersController(fileUploadRepo, &errorHandler, authMw)
+	controllerList = append(controllerList, foldersController)
+
 	fileUploadsController := controllers.NewFileUploadsController(fileUploadRepo, &errorHandler, authMw)
 	controllerList = append(controllerList, fileUploadsController)
 

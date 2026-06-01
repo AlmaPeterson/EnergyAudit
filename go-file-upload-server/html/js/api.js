@@ -74,8 +74,31 @@ class APIClient {
     }
 
     // File Uploads
-    static async getUploads() {
-        return this.request('/uploads');
+    static async getUploads(folderId = null) {
+        const query = folderId ? `?folderId=${encodeURIComponent(folderId)}` : '';
+        return this.request(`/uploads${query}`);
+    }
+
+    static async getFolders(parentId = null) {
+        const query = parentId ? `?parentId=${encodeURIComponent(parentId)}` : '';
+        return this.request(`/folders${query}`);
+    }
+
+    static async getFolderById(id) {
+        return this.request(`/folders/${encodeURIComponent(id)}`);
+    }
+
+    static async createFolder(name, parentId = null) {
+        return this.request('/folders', {
+            method: 'POST',
+            body: JSON.stringify({ name, parentId }),
+        });
+    }
+
+    static async deleteFolder(id) {
+        return this.request(`/folders/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+        });
     }
 
     static async uploadFile(file, folderId = null) {

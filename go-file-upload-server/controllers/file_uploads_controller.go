@@ -71,21 +71,18 @@ func (f FileUploadsController) HandleListUploads(w http.ResponseWriter, r *http.
 		return
 	}
 
-	uploads, err := f.repository.ListFileUploads()
+	var folderID *string
+	if v := r.URL.Query().Get("folderId"); v != "" {
+		folderID = &v
+	}
+
+	uploads, err := f.repository.ListFileUploadsByFolder(current.Id, folderID)
 	if err != nil {
 		f.errorHandler.HandleError(http.StatusInternalServerError, w, err)
 		return
 	}
 
-	// filter to owner or shared resources (sharing not yet implemented)
-	owned := []domain.FileUpload{}
-	for _, u := range uploads {
-		if u.OwnerID == current.Id {
-			owned = append(owned, u)
-		}
-	}
-
-	writeJSON(w, http.StatusOK, owned)
+	writeJSON(w, http.StatusOK, uploads)
 }
 
 func (f FileUploadsController) HandleUploadFile(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +121,18 @@ func (f FileUploadsController) HandleUploadFile(w http.ResponseWriter, r *http.R
 	// optionally read folder id from form field "folderId"
 	if v := r.FormValue("folderId"); v != "" {
 		folderID = &v
+	}
+
+	if folderID != nil {
+		folder, err := f.repository.GetFolderByID(*folderID)
+		if err != nil {
+			f.errorHandler.HandleError(http.StatusBadRequest, w, fmt.Errorf("invalid folder id"))
+			return
+		}
+		if folder.OwnerID != current.Id {
+			f.errorHandler.HandleError(http.StatusForbidden, w, fmt.Errorf("forbidden folder access"))
+			return
+		}
 	}
 
 	fileUpload, err := domain.NewFileUpload(fileName, fileExtension, current.Id, folderID, int64(len(data)), header.Header.Get("Content-Type"))

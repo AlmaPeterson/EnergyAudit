@@ -87,6 +87,32 @@
                 <div id="uploadError" class="error-message"></div>
             </section>
 
+            <!-- Folder Section -->
+            <section class="card">
+                <div class="section-header">
+                    <h2>Folders</h2>
+                    <div class="folder-actions">
+                        <button id="refreshFoldersBtn" class="btn btn-small">Refresh</button>
+                        <button id="goRootBtn" class="btn btn-small">Root</button>
+                    </div>
+                </div>
+                <div class="folder-controls">
+                    <div class="form-group">
+                        <label for="folderNameInput">New Folder Name</label>
+                        <input type="text" id="folderNameInput" placeholder="Folder name">
+                    </div>
+                    <button id="createFolderBtn" class="btn btn-primary">Create Folder</button>
+                </div>
+                <div id="folderCurrentPath" class="folder-path">Current folder: Root</div>
+                <div id="foldersLoading" class="loading">Loading folders...</div>
+                <div id="foldersEmpty" class="empty-state hidden">
+                    <p>No folders yet.</p>
+                </div>
+                <div id="foldersList" class="folders-list hidden">
+                    <!-- Folders will be populated here -->
+                </div>
+            </section>
+
             <!-- Files Section -->
             <section class="card">
                 <div class="section-header">

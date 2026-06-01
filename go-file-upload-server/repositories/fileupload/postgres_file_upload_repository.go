@@ -455,4 +455,155 @@ func (p PostgresFileUploadRepository) DeleteFileUpload(id string) error {
 	return nil
 }
 
+func (p PostgresFileUploadRepository) CreateFolder(folder domain.Folder) (domain.Folder, error) {
+	query := `INSERT INTO folders (id, owner_id, parent_id, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`
+	var parentID interface{}
+	if folder.ParentID != nil {
+		parentID = *folder.ParentID
+	}
+
+	_, err := p.db.Exec(query, folder.Id, folder.OwnerID, parentID, folder.Name, folder.CreatedAt, folder.UpdatedAt)
+	if err != nil {
+		return domain.Folder{}, err
+	}
+
+	return folder, nil
+}
+
+func (p PostgresFileUploadRepository) ListFoldersForUser(userID string, parentID *string) ([]domain.Folder, error) {
+	query := `SELECT id, owner_id, parent_id, name, created_at, updated_at FROM folders WHERE owner_id = $1`
+	args := []interface{}{userID}
+
+	if parentID == nil {
+		query += ` AND parent_id IS NULL`
+	} else {
+		query += ` AND parent_id = $2`
+		args = append(args, *parentID)
+	}
+
+	query += ` ORDER BY name`
+
+	rows, err := p.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	folders := []domain.Folder{}
+	for rows.Next() {
+		var folder domain.Folder
+		var parentID sql.NullString
+		if err := rows.Scan(&folder.Id, &folder.OwnerID, &parentID, &folder.Name, &folder.CreatedAt, &folder.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if parentID.Valid {
+			v := parentID.String
+			folder.ParentID = &v
+		}
+		folders = append(folders, folder)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return folders, nil
+}
+
+func (p PostgresFileUploadRepository) GetFolderByID(id string) (domain.Folder, error) {
+	var folder domain.Folder
+	row := p.db.QueryRow(`SELECT id, owner_id, parent_id, name, created_at, updated_at FROM folders WHERE id = $1`, id)
+
+	var parentID sql.NullString
+	if err := row.Scan(&folder.Id, &folder.OwnerID, &parentID, &folder.Name, &folder.CreatedAt, &folder.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.Folder{}, fmt.Errorf("folder not found")
+		}
+		return domain.Folder{}, err
+	}
+
+	if parentID.Valid {
+		v := parentID.String
+		folder.ParentID = &v
+	}
+
+	return folder, nil
+}
+
+func (p PostgresFileUploadRepository) DeleteFolder(id string) error {
+	var count int
+	if err := p.db.QueryRow(`SELECT COUNT(1) FROM folders WHERE parent_id = $1`, id).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("folder is not empty")
+	}
+
+	tn, err := p.tableName()
+	if err != nil {
+		return err
+	}
+
+	if err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(1) FROM %s WHERE folder_id = $1`, tn), id).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("folder is not empty")
+	}
+
+	_, err = p.db.Exec(`DELETE FROM folders WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p PostgresFileUploadRepository) ListFileUploadsByFolder(ownerID string, folderID *string) ([]domain.FileUpload, error) {
+	tn, err := p.tableName()
+	if err != nil {
+		return nil, err
+	}
+
+	query := fmt.Sprintf(`SELECT id, COALESCE(original_name, file_name) AS original_name, file_extension, owner_id, folder_id, size_bytes, mime_type, uploaded_at FROM %s WHERE owner_id = $1`, tn)
+	args := []interface{}{ownerID}
+
+	if folderID == nil {
+		query += ` AND folder_id IS NULL`
+	} else {
+		query += ` AND folder_id = $2`
+		args = append(args, *folderID)
+	}
+
+	query += ` ORDER BY uploaded_at DESC`
+
+	rows, err := p.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	uploads := []domain.FileUpload{}
+	for rows.Next() {
+		var upload domain.FileUpload
+		var dbID int64
+		var folderID sql.NullString
+		if err := rows.Scan(&dbID, &upload.OriginalName, &upload.Extension, &upload.OwnerID, &folderID, &upload.SizeBytes, &upload.MimeType, &upload.UploadedAt); err != nil {
+			return nil, err
+		}
+		upload.Id = fmt.Sprintf("%d", dbID)
+		if folderID.Valid {
+			v := folderID.String
+			upload.FolderID = &v
+		}
+		uploads = append(uploads, upload)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return uploads, nil
+}
+
 var _ domain.FileUploadRepository = PostgresFileUploadRepository{}
