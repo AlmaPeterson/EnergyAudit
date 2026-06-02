@@ -821,5 +821,6 @@ class EnergyAuditApp {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
+    UIManager.initTheme();
     new EnergyAuditApp();
 });

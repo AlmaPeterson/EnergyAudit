@@ -20,6 +20,22 @@
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Light theme overrides */
+body[data-theme="light"] {
+    --primary: #0077b6;
+    --primary-dark: #005f8a;
+    --danger: #CE3262;
+    --danger-dark: #a0254d;
+    --success: #2ea44f;
+    --bg-dark: #f6f8fb; /* used as overall body background in light mode */
+    --bg-card: #ffffff;
+    --bg-input: #f0f2f6;
+    --text-primary: #0b1221;
+    --text-secondary: #4b5563;
+    --text-muted: #6b7280;
+    --border: #e6e9ef;
+}
+
 html {
     font-size: 16px;
 }
